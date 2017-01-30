@@ -13,4 +13,6 @@
 /* Execute the command list. */
 int command_line_exec(command_t *);
 
+void die(const char *fmt, ...);
+
 #endif

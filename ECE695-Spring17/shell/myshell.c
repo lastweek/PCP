@@ -59,23 +59,16 @@ void report_background_job(int job_id, int process_id);
  *   You should divide functionality between the parent and the child.
  *   Some functions will be executed in each process.
  */
-static pid_t
-command_exec(command_t *cmd, int *pass_pipefd)
+static pid_t command_exec(command_t *cmd, int *pass_pipefd)
 {
 	pid_t pid = -1;		// process ID for child
 	int pipefd[2];		// file descriptors for this process's pipe
-
-	/* EXERCISE: Complete this function!
-	 * We've written some of the skeleton for you, but feel free to
-	 * change it.
-	 */
 
 	// Create a pipe, if this command is the left-hand side of a pipe.
 	// Return -1 if the pipe fails.
 	if (cmd->controlop == CMD_PIPE) {
 		/* Your code here. */
 	}
-
 
 	// Fork the child and execute the command in that child.
 	// You will handle all redirections by manipulating file descriptors.
@@ -125,12 +118,16 @@ command_exec(command_t *cmd, int *pass_pipefd)
 	//    in which directory would foo appear, /tmp or $HOME?
 	//
 
-	/* Your code here. */
+	if ((pid = fork()) < 0) {
+		printf("Fork error\n");
+		return pid;
+	} else if (pid == 0) {
+		/* Child */
+		execvp(cmd->argv[0], cmd->argv);
+	}
 
-	// return the child process ID
 	return pid;
 }
-
 
 /* command_line_exec(cmdlist)
  *
@@ -163,23 +160,50 @@ int command_line_exec(command_t *cmdlist)
 	int pipefd = STDIN_FILENO;  // read end of last pipe
 	
 	while (cmdlist) {
-		int wp_status;	    // Hint: use for waitpid's status argument!
-				    // Read the manual page for waitpid() to
-				    // see how to get the command's exit
-				    // status (cmd_status) from this value.
+		pid_t pid;
+		int wp_status;
 
-		// TODO: Fill out this function!
-		// If an error occurs in command_exec, feel free to abort().
-		
-		/* Your code here. */
+		pid = command_exec(cmdlist, NULL);
+		if (pid < 0) {
+			cmd_status = -EFAULT;
+			break;
+		}
 
+		switch (cmdlist->controlop) {
+		case CMD_END:
+		case CMD_SEMICOLON:
+			if (waitpid(pid, &wp_status, 0) < 0)
+				die("waitpid fails");
+			goto next;
+		case CMD_AND:
+		case CMD_OR:
+			if (waitpid(pid, &wp_status, 0) < 0)
+				die("waitpid fails");
+
+			if (WIFEXITED(wp_status))
+				cmd_status = WEXITSTATUS(wp_status);
+			else
+				die("Other status not supported\n");
+
+			if ((cmdlist->controlop == CMD_AND && !cmd_status) ||
+			    (cmdlist->controlop == CMD_OR && cmd_status))
+				goto next;
+			else
+				goto out;
+		case CMD_BACKGROUND:
+		case CMD_PIPE:
+			;
+		}
+
+next:
 		cmdlist = cmdlist->next;
 	}
 
-done:
+out:
 	return cmd_status;
 }
 
-void report_background_job(int job_id, int process_id) {
+void report_background_job(int job_id, int process_id)
+{
     fprintf(stderr, "[%d] %d\n", job_id, process_id);
 }

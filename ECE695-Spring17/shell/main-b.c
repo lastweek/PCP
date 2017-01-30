@@ -13,8 +13,20 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <stdarg.h>
+
 #include "cmdline.h"
 #include "myshell.h"
+
+void die(const char *fmt, ...)
+{
+	va_list args;
+
+	va_start(args, fmt);
+	vfprintf(stderr, fmt, args);
+	fputc('\n', stderr);
+	exit(-1);
+}
 
 /* EXERCISE: Make sure you free memory used by the command_t structures
  * when it is no longer needed.
@@ -47,8 +59,6 @@ main(int argc, char *argv[])
 	while (!feof(stdin)) {
 		parsestate_t parsestate;
 		command_t *cmdlist;
-
-		printf("shell$ ");
 
 		if (fgets(input, BUFSIZ, stdin) == NULL) {
 			if (ferror(stdin))

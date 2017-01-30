@@ -8,9 +8,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <ctype.h>
 #include <assert.h>
 #include <errno.h>
+
 #include "cmdline.h"
 
 /*
@@ -63,9 +65,10 @@ void parse_gettoken(parsestate_t *parsestate, token_t *token)
 {
 	int i = 0;
 	char *str = parsestate->position;
-	int quote_state;
-	int any_quotes;
+	bool quote_state = false;
+	bool any_quotes = false;
 
+restart:
 	while (isspace(*str))
 		str++;
 
@@ -78,19 +81,55 @@ void parse_gettoken(parsestate_t *parsestate, token_t *token)
 	}
 
 	/* Get next token */
-	while (*str != '\0' && !isspace(*str)) {
+	while (*str != '\0')  {
 		if (i >= TOKENSIZE - 1)
 			goto error;
+
+		if (quote_state) {
+			/* Quote state take everthing except " */
+			if (*str != '\"')
+				token->buffer[i++] = *str++;
+			else {
+				quote_state = false;
+				str++;
+
+				/*
+				 * Make ">" TOK_NORMAL
+				 */
+				any_quotes = true;
+			}
+			continue;
+		}
+
+		/* Normal space termination */
+		if (isspace(*str))
+			break;
+
+		if (*str == '\"') {
+			quote_state = true;
+			str++;
+			continue;
+		}
+
 		token->buffer[i++] = *str++;
 	}
+
+	if (i == 0) {
+		/* "" case */
+		goto restart;
+	}
+
 	token->buffer[i] = '\0';
 
 	/* Save state */
 	parsestate->last_position = parsestate->position;
 	parsestate->position = str;
 
-	// EXERCISE: Examine the token and store its type in token->type.
-	// Quoted special tokens, such as '">"', have type TOK_NORMAL.
+	/* "" make all special control characters normal */
+	if (any_quotes) {
+		token->type = TOK_NORMAL;
+		return;
+	}
 
 	if (!strcmp(token->buffer, "<"))
 		token->type = TOK_LESS_THAN;
@@ -138,7 +177,7 @@ void parse_ungettoken(parsestate_t *parsestate)
 	parsestate->last_position = NULL;
 }
 
-command_t * command_alloc(void)
+static command_t *command_alloc(void)
 {
 	command_t *cmd = malloc(sizeof(*cmd));
 	if (cmd)
@@ -158,7 +197,7 @@ command_t * command_alloc(void)
  *        If you're not sure what to free, look at the other code in this file
  *        to see when memory for command_t data structures is allocated.
  */
-void command_free(command_t *cmd)
+static void command_free(command_t *cmd)
 {
 	int i;
 	
@@ -168,7 +207,6 @@ void command_free(command_t *cmd)
 
 	/* Your code here. */
 }
-
 
 /*
  * command_parse(parsestate)
@@ -259,7 +297,7 @@ command_t *command_parse(parsestate_t *parsestate)
 	}
 
 done:
-	/* Terminate argv array */
+	/* Terminate argv array will NULL pointer at last */
 	cmd->argv[i] = 0;
 
 	if (i == 0) {
@@ -289,12 +327,8 @@ command_t *command_line_parse(parsestate_t *parsestate, int in_parens)
 	command_t *prev_cmd = NULL;
 	command_t *head = NULL;
 	command_t *cmd;
-	token_t token;
+	token_t token, next_token;
 	int r;
-
-	// This loop has to deal with command syntax in a smart way.
-	// Here's a nonexhaustive list of the behavior it should implement
-	// when 'in_parens == 0'.
 
 	// COMMAND                             => OK
 	// COMMAND ;                           => OK
@@ -303,25 +337,69 @@ command_t *command_line_parse(parsestate_t *parsestate, int in_parens)
 	// COMMAND )                           => error (but OK if "in_parens")
 	
 	while (1) {
+		/* Parse current cmd */
 		cmd = command_parse(parsestate);
 		if (!cmd)
 			goto error;
 
-		// Link the command up to the command line.
+		/* Link current cmd to previous cmds if any */
 		if (prev_cmd)
 			prev_cmd->next = cmd;
 		else
 			head = cmd;
 		prev_cmd = cmd;
 
-		// EXERCISE: Fetch the next token to see how to connect this
-		// command with the next command.  React to errors with
-		// 'goto error'.  The ";" and "&" tokens may require special
-		// handling, since unlike other special tokens, they can end
-		// the command line.
+		/* Parse next cmd if any */
+		parse_gettoken(parsestate, &token);
 
-		/* Your code here */
-		goto done;
+		/* MUST == TOK_END, break out */
+		if (!token_is_controlop(token.type))
+			break;
+
+		cmd->controlop = token.type;
+
+		switch (token.type) {
+		case TOK_SEMICOLON:
+		case TOK_AMPERSAND:
+			parse_gettoken(parsestate, &next_token);
+			if (next_token.type == TOK_END)
+				/*
+				 * CMD ;
+				 * CMD &
+				 */
+				goto done;
+			else {
+				/*
+				 * CMD ; CMD
+				 * CMD & CMD
+				 */
+				parse_ungettoken(parsestate);
+				continue;
+			}
+		case TOK_PIPE:
+		case TOK_DOUBLEAMP:
+		case TOK_DOUBLEPIPE:
+			parse_gettoken(parsestate, &next_token);
+			if (next_token.type == TOK_END)
+				/*
+				 * CMD |
+				 * CMD &&
+				 * CMD ||
+				 */
+				goto error;
+			else {
+				/*
+				 * CMD | CMD
+				 * CMD && CMD
+				 * CMD || CMD
+				 */
+				parse_ungettoken(parsestate);
+				continue;
+			}
+		default:
+			die("BUG");
+			goto error;
+		}
 	}
 
 done:

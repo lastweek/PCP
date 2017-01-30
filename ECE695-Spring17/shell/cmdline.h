@@ -1,6 +1,7 @@
 #ifndef PROG1_CMDLINE_H
 #define PROG1_CMDLINE_H
 #include <unistd.h>
+#include <stdbool.h>
 
 /* 
  * Header file for commandline parsing for Lab 1 - Shell processing
@@ -93,6 +94,14 @@ typedef enum {
 	CMD_OR = TOK_DOUBLEPIPE             // '||'
 } controlop_t;
 
+static inline bool token_is_controlop(int t)
+{
+	if (t == CMD_SEMICOLON	|| t == CMD_BACKGROUND	||
+	    t == CMD_PIPE	|| t == CMD_AND || t == CMD_OR )
+		return true;
+	return false;
+}
+
 /*
  * A command_t represents a single shell command.
  * 
@@ -131,12 +140,6 @@ struct command {
 	command_t *next;            // pointer to the next command
 	                            // in the command line
 };
-
-/* Allocates and returns a new blank command. */
-command_t *command_alloc(void);
-
-/* Frees a command. */
-void command_free(command_t *command);
 
 /* Parses a single command from a command line parameter, using next_token. */
 command_t *command_parse(parsestate_t *parsestate);
