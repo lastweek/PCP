@@ -47,13 +47,9 @@ main(int argc, char *argv[])
 	while (!feof(stdin)) {
 		parsestate_t parsestate;
 		command_t *cmdlist;
-		// Print the prompt
-		if (!quiet) {
-			printf("prog1$ ");
-			fflush(stdout);
-		}
 
-		// Read a string, checking for error or EOF
+		printf("shell$ ");
+
 		if (fgets(input, BUFSIZ, stdin) == NULL) {
 			if (ferror(stdin))
 				// This function prints a description of the
@@ -62,26 +58,21 @@ main(int argc, char *argv[])
 			break;
 		}
 
-		// TODO: invoke some function(s) in cmdline.c for parsing the read string.
-		//XXXXXXXXXXXXXX
+		parse_init(&parsestate, input);
 
+		cmdlist = command_line_parse(&parsestate, 0);
 		if (!cmdlist) {
 			printf("Syntax error\n");
 			continue;
 		}
 
-		// print the command list
 		if (!quiet) {
-			// TODO: invoke some function(s) in cmdline.c for printing out the command for debugging.
-			//XXXXXXXXXXXXXX
-			// why do we need to do this?
+			command_print(cmdlist, 8);
 			fflush(stdout);
 		}
 
-		// and run it!
 		if (cmdlist)
 			command_line_exec(cmdlist);
-
 	}
 
 	return 0;

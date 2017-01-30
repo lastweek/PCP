@@ -157,8 +157,7 @@ command_exec(command_t *cmd, int *pass_pipefd)
  *                        had status 0, for the purpose of returning a value
  *                        from command_line_exec.
  */
-int
-command_line_exec(command_t *cmdlist)
+int command_line_exec(command_t *cmdlist)
 {
 	int cmd_status = 0;	    // status of last command executed
 	int pipefd = STDIN_FILENO;  // read end of last pipe

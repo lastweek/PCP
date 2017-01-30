@@ -22,20 +22,11 @@
  *   token at a time.  'parse_ungettoken' backs up one token.
  */
 
-
-/*
- * parse_init(parsestate, line)
- *
- *   Initialize a parsestate_t object for a given command line.
- */
-
-void
-parse_init(parsestate_t *parsestate, char *input_line)
+void parse_init(parsestate_t *parsestate, char *input_line)
 {
 	parsestate->position = input_line;
 	parsestate->last_position = NULL;
 }
-
 
 /*
  * parse_gettoken(parsestate, token)
@@ -68,66 +59,68 @@ parse_init(parsestate_t *parsestate, char *input_line)
  *           Note that "2>" does not end a token.  The string "x2>y" is parsed
  *           as "x2 > y", not "x 2> y".
  */
-
-void
-parse_gettoken(parsestate_t *parsestate, token_t *token)
+void parse_gettoken(parsestate_t *parsestate, token_t *token)
 {
-	int i;
-	char *str = parsestate->position;	// current string
-	int quote_state;			// Hint!
-	int any_quotes;				// Hint!
+	int i = 0;
+	char *str = parsestate->position;
+	int quote_state;
+	int any_quotes;
 
-	// EXERCISE: Skip initial whitespace in 'str'.
+	while (isspace(*str))
+		str++;
 
-	/* Your code here. */
-	
-	// Report TOK_END at the end of the command string.
+	/* Reachs cmd end? */
 	if (*str == '\0') {
-		// Save initial position so parse_ungettoken() will work
 		parsestate->last_position = parsestate->position;
-		token->buffer[0] = '\0';	// empty token
+		token->buffer[0] = '\0';
 		token->type = TOK_END;
 		return;
 	}
 
-
-	// EXERCISE: Store the next token into 'token', and terminate the token
-	// with a null character.  Handle quotes properly.  Store at most
-	// TOKENSIZE - 1 characters into 'token' (plus a terminating null
-	// character); longer tokens should cause an error.
-
-	// The current code treats the entire rest of the string as a token.
-	// Change this code to handle quotes and terminate tokens at spaces.
-
-	i = 0;
-	while (*str != '\0') {
+	/* Get next token */
+	while (*str != '\0' && !isspace(*str)) {
 		if (i >= TOKENSIZE - 1)
-			// Token too long; this is an error
 			goto error;
 		token->buffer[i++] = *str++;
 	}
-	token->buffer[i] = '\0';	// end the token string
+	token->buffer[i] = '\0';
 
-
-	// Save initial position so parse_ungettoken() will work
+	/* Save state */
 	parsestate->last_position = parsestate->position;
-	// Move current position in place for the next token
 	parsestate->position = str;
-
 
 	// EXERCISE: Examine the token and store its type in token->type.
 	// Quoted special tokens, such as '">"', have type TOK_NORMAL.
 
-	/* Your code here. */
-	
-	token->type = TOK_NORMAL;
+	if (!strcmp(token->buffer, "<"))
+		token->type = TOK_LESS_THAN;
+	else if (!strcmp(token->buffer, ">"))
+		token->type = TOK_GREATER_THAN;
+	else if (!strcmp(token->buffer, "2>"))
+		token->type = TOK_2_GREATER_THAN;
+	else if (!strcmp(token->buffer, ";"))
+		token->type = TOK_SEMICOLON;
+	else if (!strcmp(token->buffer, "&"))
+		token->type = TOK_AMPERSAND;
+	else if (!strcmp(token->buffer, "|"))
+		token->type = TOK_PIPE;
+	else if (!strcmp(token->buffer, "&&"))
+		token->type = TOK_DOUBLEAMP;
+	else if (!strcmp(token->buffer, "||"))
+		token->type = TOK_DOUBLEPIPE;
+	else if (!strcmp(token->buffer, "("))
+		token->type = TOK_OPEN_PAREN;
+	else if (!strcmp(token->buffer, ")"))
+		token->type = TOK_CLOSE_PAREN;
+	else
+		token->type = TOK_NORMAL;
+
 	return;
 
- error:
+error:
 	token->buffer[0] = '\0';
 	token->type = TOK_ERROR;
 }
-
 
 /*
  * parse_ungettoken(parsestate)
@@ -136,37 +129,22 @@ parse_gettoken(parsestate_t *parsestate, token_t *token)
  *   It's impossible to back up more than one token; if you call
  *   parse_ungettoken() twice in a row, the second call will fail.
  */
-
-void
-parse_ungettoken(parsestate_t *parsestate)
+void parse_ungettoken(parsestate_t *parsestate)
 {
-	// Can't back up more than one token.
+	/* Can't back up more than one token */
 	assert(parsestate->last_position != NULL);
+
 	parsestate->position = parsestate->last_position;
 	parsestate->last_position = NULL;
 }
 
-
-/*
- * command_alloc()
- *
- *   Allocates and returns a new blank command.
- */
-
-command_t *
-command_alloc(void)
+command_t * command_alloc(void)
 {
-	// Allocate memory for the command
-	command_t *cmd = (command_t *) malloc(sizeof(*cmd));
-	if (!cmd)
-		return NULL;
-	
-	// Set all its fields to 0
-	memset(cmd, 0, sizeof(*cmd));
-
+	command_t *cmd = malloc(sizeof(*cmd));
+	if (cmd)
+		memset(cmd, 0, sizeof(*cmd));
 	return cmd;
 }
-
 
 /*
  * command_free()
@@ -180,9 +158,7 @@ command_alloc(void)
  *        If you're not sure what to free, look at the other code in this file
  *        to see when memory for command_t data structures is allocated.
  */
-
-void
-command_free(command_t *cmd)
+void command_free(command_t *cmd)
 {
 	int i;
 	
@@ -210,12 +186,12 @@ command_free(command_t *cmd)
  *        stop at the end of the command, and to handle parentheses and
  *        redirection correctly.
  */
-
-command_t *
-command_parse(parsestate_t *parsestate)
+command_t *command_parse(parsestate_t *parsestate)
 {
 	int i = 0;
-	command_t *cmd = command_alloc();
+	command_t *cmd;
+
+	cmd = command_alloc();
 	if (!cmd)
 		return NULL;
 
@@ -250,12 +226,31 @@ command_parse(parsestate_t *parsestate)
 		// you can use for parens; figure out how to use it!
 
 		token_t token;
+		token_t fn_token;
 		parse_gettoken(parsestate, &token);
 
 		switch (token.type) {
 		case TOK_NORMAL:
-			cmd->argv[i] = strdup(token.buffer);
-			i++;
+			cmd->argv[i++] = strdup(token.buffer);
+			break;
+		case TOK_LESS_THAN:
+			parse_gettoken(parsestate, &fn_token);
+			if (fn_token.type != TOK_NORMAL)
+				goto error;
+			cmd->redirect_filename[0] = strdup(fn_token.buffer);
+			break;
+		case TOK_GREATER_THAN:
+			parse_gettoken(parsestate, &fn_token);
+			if (fn_token.type != TOK_NORMAL)
+				goto error;
+			cmd->redirect_filename[1] = strdup(fn_token.buffer);
+			break;
+		case TOK_2_GREATER_THAN:
+			parse_gettoken(parsestate, &fn_token);
+			if (fn_token.type != TOK_NORMAL)
+				goto error;
+
+			cmd->redirect_filename[2] = strdup(fn_token.buffer);
 			break;
 		default:
 			parse_ungettoken(parsestate);
@@ -263,24 +258,20 @@ command_parse(parsestate_t *parsestate)
 		}
 	}
 
- done:
-	// NULL-terminate the argv list
+done:
+	/* Terminate argv array */
 	cmd->argv[i] = 0;
 
-	// EXERCISE: Make sure you return the right return value!
-
 	if (i == 0) {
-		/* Empty command */
 		command_free(cmd);
 		return NULL;
 	} else
 		return cmd;
-	
- error:
+
+error:
 	command_free(cmd);
 	return NULL;
 }
-
 
 /*
  * command_line_parse(parsestate, in_parens)
@@ -293,8 +284,7 @@ command_parse(parsestate_t *parsestate)
  *   But at the top-level command line, when 'in_parens == 0', a right
  *   parenthesis is an error.
  */
-command_t *
-command_line_parse(parsestate_t *parsestate, int in_parens)
+command_t *command_line_parse(parsestate_t *parsestate, int in_parens)
 {
 	command_t *prev_cmd = NULL;
 	command_t *head = NULL;
@@ -313,9 +303,8 @@ command_line_parse(parsestate_t *parsestate, int in_parens)
 	// COMMAND )                           => error (but OK if "in_parens")
 	
 	while (1) {
-		// Parse the next command.
 		cmd = command_parse(parsestate);
-		if (!cmd)		// Empty commands are errors.
+		if (!cmd)
 			goto error;
 
 		// Link the command up to the command line.
@@ -335,27 +324,19 @@ command_line_parse(parsestate_t *parsestate, int in_parens)
 		goto done;
 	}
 
- done:
+done:
 	// EXERCISE: Check that the command line ends properly.
 
 	/* Your code here */
 
 	return head;
 
- error:
+error:
 	command_free(head);
 	return NULL;
 }
 
-
-/*
- * commandlist_print(command, indent)
- *
- *   Prints a representation of the command to standard output.
- */
-
-void
-command_print(command_t *cmd, int indent)
+void command_print(command_t *cmd, int indent)
 {
 	int argc, i;
 	
@@ -367,7 +348,6 @@ command_print(command_t *cmd, int indent)
 	for (argc = 0; argc < MAXTOKENS && cmd->argv[argc]; argc++)
 		/* do nothing */;
 
-	// More than MAXTOKENS is an error
 	assert(argc <= MAXTOKENS);
 
 	printf("%*s[%d args", indent, "", argc);

@@ -13,13 +13,7 @@
  * A command line "token" is an array of up to TOKENSIZE - 1 characters,
  * terminated by a null character ('\0') in the C tradition.
  */
-
 #define TOKENSIZE 1024
-
-
-/*
- * Shell tokens types have their own type.
- */
 
 typedef enum {
 	TOK_ERROR = -1,      // parse error, e.g. mismatched quotes
@@ -37,13 +31,11 @@ typedef enum {
 	TOK_CLOSE_PAREN      // ')'
 } tokentype_t;
 
-
 /*
  * The saved state of the token parser.
  * It is stored in this structure so that it can be saved across multiple
  * calls to next_token(), command_parse(), and command_line_parse().
  */
-
 typedef struct {
 	char *position;		// Portion of command line yet to be parsed
 	char *last_position;	// 'position' from last token, allowing
@@ -55,21 +47,12 @@ typedef struct {
  * A single token.
  * The token's string value is stored in 'buffer'.  Its type is 'type'.
  */
-
 typedef struct {
 	tokentype_t type;	    // Type of this token
 	char buffer[TOKENSIZE];	    // Stores the current token
 } token_t;
 
-
-/*
- * parse_init(parsestate, line)
- *
- *   Initialize a parsestate_t object for a given command line.
- */
-
 void parse_init(parsestate_t *parsestate, char *line);
-
 
 /*
  * parse_gettoken(parsestate, token)
@@ -79,9 +62,7 @@ void parse_init(parsestate_t *parsestate, char *line);
  *   Also shifts the parsestate to point to the next token.
  *   Tokens are delimited by space characters. Any leading space is skipped.
  */
-
 void parse_gettoken(parsestate_t *parsestate, token_t *token);
-
 
 /*
  * parse_ungettoken(parsestate)
@@ -95,7 +76,6 @@ void parse_gettoken(parsestate_t *parsestate, token_t *token);
  *       parse_gettoken(parsestate, &token)  =>  TOK_NORMAL, "b"
  *       parse_gettoken(parsestate, &token)  =>  TOK_NORMAL, "c"
  */
-
 void parse_ungettoken(parsestate_t *parsestate);
 
 
@@ -104,7 +84,6 @@ void parse_ungettoken(parsestate_t *parsestate);
  * Each controlop_t has the same integer value as the corresponding
  * tokentype_t. Note that not all token types are control operators!
  */
-
 typedef enum {
 	CMD_END = TOK_END,                  // end of command line
 	CMD_SEMICOLON = TOK_SEMICOLON,      // ';'
@@ -113,7 +92,6 @@ typedef enum {
 	CMD_AND = TOK_DOUBLEAMP,            // '&&'
 	CMD_OR = TOK_DOUBLEPIPE             // '||'
 } controlop_t;
-
 
 /*
  * A command_t represents a single shell command.
@@ -153,7 +131,6 @@ struct command {
 	command_t *next;            // pointer to the next command
 	                            // in the command line
 };
-
 
 /* Allocates and returns a new blank command. */
 command_t *command_alloc(void);
