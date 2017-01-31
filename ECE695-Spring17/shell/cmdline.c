@@ -14,6 +14,7 @@
 #include <errno.h>
 
 #include "cmdline.h"
+#include "myshell.h"
 
 /*
  * parsestate_t

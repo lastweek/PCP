@@ -18,16 +18,6 @@
 #include "cmdline.h"
 #include "myshell.h"
 
-void die(const char *fmt, ...)
-{
-	va_list args;
-
-	va_start(args, fmt);
-	vfprintf(stderr, fmt, args);
-	fputc('\n', stderr);
-	exit(-1);
-}
-
 /* EXERCISE: Make sure you free memory used by the command_t structures
  * when it is no longer needed.
  * EXERCISE:  Make sure you clean up ALL zombie processes, including those

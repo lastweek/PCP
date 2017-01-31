@@ -13,6 +13,12 @@
 /* Execute the command list. */
 int command_line_exec(command_t *);
 
-void die(const char *fmt, ...);
+#define die(fmt...)						\
+do {								\
+	fprintf(stderr, "[%s:%d] ", __func__, __LINE__);	\
+	fprintf(stderr, fmt);					\
+	fputc('\n', stderr);					\
+	exit(-1);						\
+} while (0)
 
 #endif

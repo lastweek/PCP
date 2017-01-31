@@ -40,10 +40,6 @@ void report_background_job(int job_id, int process_id);
  *   Returns the process ID of the forked child, or < 0 if some system call
  *   fails.
  *
- *   You must also handle the internal commands "cd" and "exit".
- *   These are special because they must execute in the shell process, rather
- *   than a child.  (Why?)
- *
  *   However, these special commands still have a status!
  *   For example, "cd DIR" should return status 0 if we successfully change
  *   to the DIR directory, and status 1 otherwise.
@@ -61,26 +57,18 @@ void report_background_job(int job_id, int process_id);
  */
 static pid_t command_exec(command_t *cmd, int *pass_pipefd)
 {
-	pid_t pid = -1;		// process ID for child
-	int pipefd[2];		// file descriptors for this process's pipe
+	pid_t pid = -1;
+	int fd[2];
 
-	// Create a pipe, if this command is the left-hand side of a pipe.
-	// Return -1 if the pipe fails.
+	/*
+	 * Create a pipe
+	 * If this command is the left-hand side of a pipe
+	 */
 	if (cmd->controlop == CMD_PIPE) {
-		/* Your code here. */
+		if (pipe(fd) < 0)
+			die("Fail to create pipe");
 	}
 
-	// Fork the child and execute the command in that child.
-	// You will handle all redirections by manipulating file descriptors.
-	//
-	// This section is fairly long.  It is probably best to implement this
-	// part in stages, checking it after each step.  For instance, first
-	// implement just the fork and the execute in the child.  This should
-	// allow you to execute simple commands like 'ls'.  Then add support
-	// for redirections: commands like 'ls > foo' and 'cat < foo'.  Then
-	// add parentheses, then pipes, and finally the internal commands
-	// 'cd' and 'exit'.
-	//
 	// In the child, you should:
 	//    1. Set up stdout to point to this command's pipe, if necessary.
 	//    2. Set up stdin to point to the PREVIOUS command's pipe (that
@@ -119,11 +107,62 @@ static pid_t command_exec(command_t *cmd, int *pass_pipefd)
 	//
 
 	if ((pid = fork()) < 0) {
-		printf("Fork error\n");
+		die("Fail to fork");
 		return pid;
 	} else if (pid == 0) {
-		/* Child */
+		/* Child*/
+
+		/*
+		 * Standard Output Source
+		 * 1) Pipe to next cmd
+		 * 2) Redirection from file
+		 * 3) STDOUT
+		 */
+		if (cmd->controlop == CMD_PIPE) {
+			close(fd[0]);
+			dup2(fd[1], STDOUT_FILENO);
+		} else if (cmd->redirect_filename[STDOUT_FILENO]) {
+			int fd;
+			char *fn;
+
+			fn = cmd->redirect_filename[STDOUT_FILENO];
+			fd = open(fn, O_RDWR | O_CREAT, 0644);
+			if (fd < 0)
+				die("fail to open %s\n", fn);
+
+			dup2(fd, STDOUT_FILENO);
+		}
+
+		/*
+		 * Standard Input Source
+		 * 1) Pipe from previous cmd
+		 * 2) Redirection from file
+		 * 3) STDIN
+		 */
+		if (*pass_pipefd != STDIN_FILENO) {
+			/* The right-side of the pipe, CMD | CMD */
+			dup2(*pass_pipefd, STDIN_FILENO);
+		} else if (cmd->redirect_filename[STDIN_FILENO]) {
+			int fd;
+			char *fn;
+			
+			fn = cmd->redirect_filename[STDIN_FILENO];
+			fd = open(fn, O_RDWR, 0644);
+			if (fd < 0)
+				die("fail to open %s\n", fn);
+
+			dup2(fd, STDIN_FILENO);
+		}
+
 		execvp(cmd->argv[0], cmd->argv);
+	} else {
+		/* Parent */
+
+		if (cmd->controlop == CMD_PIPE) {
+			close(fd[1]);
+			*pass_pipefd = fd[0];
+		} else
+			*pass_pipefd = STDIN_FILENO;
 	}
 
 	return pid;
@@ -156,14 +195,14 @@ static pid_t command_exec(command_t *cmd, int *pass_pipefd)
  */
 int command_line_exec(command_t *cmdlist)
 {
-	int cmd_status = 0;	    // status of last command executed
-	int pipefd = STDIN_FILENO;  // read end of last pipe
-	
+	int cmd_status = 0;
+	int pipefd = STDIN_FILENO;
+
 	while (cmdlist) {
 		pid_t pid;
 		int wp_status;
 
-		pid = command_exec(cmdlist, NULL);
+		pid = command_exec(cmdlist, &pipefd);
 		if (pid < 0) {
 			cmd_status = -EFAULT;
 			break;
@@ -183,7 +222,7 @@ int command_line_exec(command_t *cmdlist)
 			if (WIFEXITED(wp_status))
 				cmd_status = WEXITSTATUS(wp_status);
 			else
-				die("Other status not supported\n");
+				die("Signal etc. not supported\n");
 
 			if ((cmdlist->controlop == CMD_AND && !cmd_status) ||
 			    (cmdlist->controlop == CMD_OR && cmd_status))
