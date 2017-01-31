@@ -17,16 +17,11 @@
 #include "cmdline.h"
 #include "myshell.h"
 
-/** 
- * Reports the creation of a background job in the following format:
- *  [job_id] process_id
- * to stderr.
- */
-void report_background_job(int job_id, int process_id);
+void report_jobs(void);
 
 static bool builtin_cmd(char *name)
 {
-	if (!strcmp(name, "cd") || !strcmp(name, "exit"))
+	if (!strcmp(name, "cd") || !strcmp(name, "exit") || !strcmp(name, "jobs"))
 		return true;
 	return false;
 }
@@ -43,6 +38,8 @@ static int do_builtin(command_t *cmd)
 			return ret;
 	} else if (!strcmp(name, "exit")) {
 		exit(0);
+	} else if (!strcmp(name, "jobs")) {
+		report_jobs();
 	} else
 		die("BUG");
 
@@ -315,7 +312,7 @@ int command_line_exec(command_t *cmdlist)
 				}
 
 				sub_cmd_status = command_line_exec(cmdlist->subshell);
-				exit(sub_cmd_status);
+				exit(!!sub_cmd_status);
 			} else {
 				/* Parent Shell */
 				if (cmdlist->controlop == CMD_PIPE) {
@@ -330,11 +327,9 @@ int command_line_exec(command_t *cmdlist)
 				if (waitpid(pid, &sub_wp_status, 0) < 0)
 					die("Fail to wait subshell");
 
-				if (WIFEXITED(wp_status))
+				if (WIFEXITED(wp_status)) {
 					sub_cmd_status = WEXITSTATUS(wp_status);
-				else if (WIFSTOPPED(wp_status)) {
-					;
-					//printf("The subshell has not terminated\n");
+					//printf("The subshell exit status: %d\n", sub_cmd_status);
 				} else if (WIFSIGNALED(wp_status)) {
 					sub_cmd_status = 0;
 					//printf("The subshell terminated due to signal: %d\n",
@@ -419,7 +414,17 @@ out:
 	return cmd_status;
 }
 
+/** 
+ * Reports the creation of a background job in the following format:
+ *  [job_id] process_id
+ * to stderr.
+ */
 void report_background_job(int job_id, int process_id)
 {
     fprintf(stderr, "[%d] %d\n", job_id, process_id);
+}
+
+void report_jobs(void)
+{
+
 }
