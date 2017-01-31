@@ -216,14 +216,6 @@ static void command_free(command_t *cmd)
  *   Returns a pointer to the allocated command, or NULL on error
  *   or if the command is empty. (One example is if the end of the
  *   line is reached, but there are other examples too.)
- *
- *   EXERCISES:
- *        The current version of the function just grabs all the tokens
- *        from 'input' and doesn't stop on command-delimiting tokens.
- *        Your job is to enhance its error checking (to avoid exceeding
- *        the maximum number of tokens in a command, for example), to make it
- *        stop at the end of the command, and to handle parentheses and
- *        redirection correctly.
  */
 command_t *command_parse(parsestate_t *parsestate)
 {
@@ -235,8 +227,6 @@ command_t *command_parse(parsestate_t *parsestate)
 		return NULL;
 
 	while (1) {
-		// EXERCISE: Read the next token from 'parsestate'.
-
 		// Normal tokens go in the cmd->argv[] array.
 		// Redirection file names go into cmd->redirect_filename[].
 		// Open parenthesis tokens indicate a subshell command.
@@ -291,6 +281,12 @@ command_t *command_parse(parsestate_t *parsestate)
 
 			cmd->redirect_filename[2] = strdup(fn_token.buffer);
 			break;
+		case TOK_OPEN_PAREN:
+			/* CMD ) */
+			cmd->subshell = command_line_parse(parsestate, 1);
+			if (!cmd->subshell)
+				goto error;
+			break;
 		default:
 			parse_ungettoken(parsestate);
 			goto done;
@@ -301,7 +297,7 @@ done:
 	/* Terminate argv array will NULL pointer at last */
 	cmd->argv[i] = 0;
 
-	if (i == 0) {
+	if (i == 0 && !cmd->subshell) {
 		command_free(cmd);
 		return NULL;
 	} else
@@ -336,7 +332,7 @@ command_t *command_line_parse(parsestate_t *parsestate, int in_parens)
 	// COMMAND && COMMAND                  => OK
 	// COMMAND &&                          => error (can't end with &&)
 	// COMMAND )                           => error (but OK if "in_parens")
-	
+
 	while (1) {
 		/* Parse current cmd */
 		cmd = command_parse(parsestate);
@@ -404,9 +400,8 @@ command_t *command_line_parse(parsestate_t *parsestate, int in_parens)
 	}
 
 done:
-	// EXERCISE: Check that the command line ends properly.
-
-	/* Your code here */
+	if (token.type == TOK_CLOSE_PAREN && !in_parens)
+		goto error;
 
 	return head;
 

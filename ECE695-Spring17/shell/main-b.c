@@ -32,11 +32,7 @@
  */
 
 
-/* 
- * Main function for shell.
- */
-int
-main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
 	int quiet = 0;
 	char input[BUFSIZ];

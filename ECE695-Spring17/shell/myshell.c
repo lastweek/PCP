@@ -202,6 +202,14 @@ int command_line_exec(command_t *cmdlist)
 		pid_t pid;
 		int wp_status;
 
+		if (cmdlist->subshell) {
+			cmd_status = command_line_exec(cmdlist->subshell);
+
+			if ((cmdlist->controlop == CMD_AND && !cmd_status) ||
+			    (cmdlist->controlop == CMD_OR && cmd_status))
+				goto next;
+		}
+
 		pid = command_exec(cmdlist, &pipefd);
 		if (pid < 0) {
 			cmd_status = -EFAULT;
@@ -213,6 +221,11 @@ int command_line_exec(command_t *cmdlist)
 		case CMD_SEMICOLON:
 			if (waitpid(pid, &wp_status, 0) < 0)
 				die("waitpid fails");
+
+			if (WIFEXITED(wp_status))
+				cmd_status = WEXITSTATUS(wp_status);
+			else
+				die("Signal etc. not supported\n");
 			goto next;
 		case CMD_AND:
 		case CMD_OR:
