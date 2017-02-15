@@ -1,0 +1,15 @@
+Milestone for Task 2
+
+First of all, to catch the page fault for file-backed VMA, I need to modify
+the handle_pte_fault() function to catch the page fault. Then in order to
+record number of memory references, I need to add/allocate a big array inside
+each file-backed VMA.
+
+At last, in order to show the info in /proc/PID/maps, I will modify the
+task_mmu.c file to print my info for each file-backed VMA.
+
+In order to achieve the accurate memory reference accouting, I may also need
+to check kprobe, see how it can emulate instructions and get precise breakponits.
+
+Tue Feb 14 21:48:52 EST 2017
+Yizhou Shan <shan13@purdue.edu>
