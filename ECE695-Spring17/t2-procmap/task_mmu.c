@@ -396,6 +396,29 @@ static void show_vma_page_map(struct seq_file *m, struct vm_area_struct *vma,
 	} while (pgd++, addr = next, addr != end);
 }
 
+static ssize_t pid_maps_write(struct file *file, const char __user *buf,
+			      size_t count, loff_t *offs)
+{
+	char *options;
+
+	options = kzalloc(count, GFP_KERNEL);
+	if (!options)
+		return -ENOMEM;
+
+	if (copy_from_user(options, buf, count)) {
+		kfree(options);
+		return -EFAULT;
+	}
+
+	if (options[0] == 'y')
+		show_vma_page_map_enabled = true; 
+	else if (options[0] == 'n')
+		show_vma_page_map_enabled = false;
+
+	kfree(options);
+	return count;
+}
+
 static void
 show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 {
@@ -549,6 +572,7 @@ static int tid_maps_open(struct inode *inode, struct file *file)
 const struct file_operations proc_pid_maps_operations = {
 	.open		= pid_maps_open,
 	.read		= seq_read,
+	.write          = pid_maps_write,
 	.llseek		= seq_lseek,
 	.release	= seq_release_private,
 };
