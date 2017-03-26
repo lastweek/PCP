@@ -371,6 +371,23 @@ struct cfs_bandwidth { };
 
 #endif	/* CONFIG_CGROUP_SCHED */
 
+/* MyCFS-related fields in a runqueue */
+struct mycfs_rq {
+	unsigned int nr_running, h_nr_running;
+
+	u64 exec_clock;
+	u64 min_vruntime;
+
+	struct rb_root tasks_timeline;
+	struct rb_node *rb_leftmost;
+
+	/*
+	 * 'curr' points to currently running entity on this cfs_rq.
+	 * It is set to NULL otherwise (i.e when none are currently running).
+	 */
+	struct sched_entity *curr, *next, *last, *skip;
+};
+
 /* CFS-related fields in a runqueue */
 struct cfs_rq {
 	struct load_weight load;
@@ -622,6 +639,7 @@ struct rq {
 	unsigned long nr_load_updates;
 	u64 nr_switches;
 
+	struct mycfs_rq mycfs;
 	struct cfs_rq cfs;
 	struct rt_rq rt;
 	struct dl_rq dl;
@@ -1307,6 +1325,7 @@ extern const struct sched_class stop_sched_class;
 extern const struct sched_class dl_sched_class;
 extern const struct sched_class rt_sched_class;
 extern const struct sched_class fair_sched_class;
+extern const struct sched_class mycfs_sched_class;
 extern const struct sched_class idle_sched_class;
 
 
@@ -1728,6 +1747,7 @@ print_numa_stats(struct seq_file *m, int node, unsigned long tsf,
 #endif /* CONFIG_NUMA_BALANCING */
 #endif /* CONFIG_SCHED_DEBUG */
 
+extern void init_mycfs_rq(struct mycfs_rq *mycfs_rq);
 extern void init_cfs_rq(struct cfs_rq *cfs_rq);
 extern void init_rt_rq(struct rt_rq *rt_rq);
 extern void init_dl_rq(struct dl_rq *dl_rq);
