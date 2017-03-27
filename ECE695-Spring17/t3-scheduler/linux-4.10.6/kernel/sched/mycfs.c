@@ -8,8 +8,10 @@
 /*
  * Note:
  *
+ * 0) mycfs_rq->curr is not kept in the rb-tree
+ *
  * 1) When a task call sched_setscheduler() to switch to MyCFS,
- *    the task will be dequeued and put from previous class first
+ *    the task will be dequeued and put from previous class,
  *    after that it will call enqueue_task() and set_curr_task()
  *    to put the task into MyCFS class. After all this, the
  *    switched_to_mycfs() callback will be invoked.
@@ -446,21 +448,6 @@ static void dequeue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se,
 		update_min_vruntime(mycfs_rq);
 }
 
-static void put_prev_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *prev)
-{
-	if (prev->on_rq) {
-		/*
-		 * If still on the runqueue then deactivate_task()
-		 * was not called and update_curr() has to be done:
-		 */
-		update_curr(mycfs_rq);
-
-		/* Put 'current' back into the tree. */
-		__enqueue_entity(mycfs_rq, prev);
-	}
-	mycfs_rq->curr = NULL;
-}
-
 /*
  * The enqueue_task method is called before nr_running is increased.
  * Here we update the mycfs scheduling stats and then put the task
@@ -644,6 +631,21 @@ static inline void update_stats_curr_start(struct mycfs_rq *mycfs_rq,
 {
 	/* We are starting a new run period: */
 	se->exec_start = rq_clock_task(rq_of(mycfs_rq));
+}
+
+static void put_prev_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *prev)
+{
+	if (prev->on_rq) {
+		/*
+		 * If still on the runqueue then deactivate_task()
+		 * was not called and update_curr() has to be done:
+		 */
+		update_curr(mycfs_rq);
+
+		/* Put 'current' back into the tree. */
+		__enqueue_entity(mycfs_rq, prev);
+	}
+	mycfs_rq->curr = NULL;
 }
 
 static void set_next_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
@@ -893,6 +895,15 @@ static void task_fork_mycfs(struct task_struct *p)
 		se->vruntime = curr->vruntime;
 	}
 	place_entity(mycfs_rq, se, 1);
+
+	if (sysctl_sched_child_runs_first && curr && entity_before(curr, se)) {
+		/*
+		 * Upon rescheduling, sched_class::put_prev_task() will place
+		 * 'current' within the tree based on its new key value.
+		 */
+		swap(curr->vruntime, se->vruntime);
+		resched_curr(rq);
+	}
 
 	se->vruntime -= mycfs_rq->min_vruntime;
 	raw_spin_unlock(&rq->lock);
