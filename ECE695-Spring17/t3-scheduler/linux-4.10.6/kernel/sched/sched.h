@@ -383,6 +383,8 @@ struct mycfs_rq {
 	unsigned int nr_running, h_nr_running;
 
 	u64 exec_clock;
+
+	/* minimum run time of any task in the MyCFS runqueue */
 	u64 min_vruntime;
 
 	struct rb_root tasks_timeline;
