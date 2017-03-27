@@ -1,6 +1,8 @@
 /*
- * MyCFS, Copyright (c) 2017 Yizhou Shan
- * For Spring 2017 ECE696 task 3
+ * MyCFS, modified after CFS
+ * For Spring 2017 ECE695 task 3
+ *
+ * Yizhou Shan, March 2017
  */
 
 #include <linux/sched.h>
@@ -28,12 +30,208 @@ static inline struct rq *rq_of(struct mycfs_rq *mycfs_rq)
 	return container_of(mycfs_rq, struct rq, mycfs);
 }
 
+static inline struct mycfs_rq *task_mycfs_rq(struct task_struct *p)
+{
+	return &task_rq(p)->mycfs;
+}
+
 static inline struct mycfs_rq *mycfs_rq_of(struct sched_entity *se)
 {
 	struct task_struct *p = task_of(se);
 	struct rq *rq = task_rq(p);
 
 	return &rq->mycfs;
+}
+
+static inline u64 max_vruntime(u64 max_vruntime, u64 vruntime)
+{
+	s64 delta = (s64)(vruntime - max_vruntime);
+	if (delta > 0)
+		max_vruntime = vruntime;
+
+	return max_vruntime;
+}
+
+static inline u64 min_vruntime(u64 min_vruntime, u64 vruntime)
+{
+	s64 delta = (s64)(vruntime - min_vruntime);
+	if (delta < 0)
+		min_vruntime = vruntime;
+
+	return min_vruntime;
+}
+
+static inline int entity_before(struct sched_entity *a,
+				struct sched_entity *b)
+{
+	return (s64)(a->vruntime - b->vruntime) < 0;
+}
+
+/*
+ * delta /= w
+ */
+static inline u64 calc_delta_mycfs(u64 delta, struct sched_entity *se)
+{
+#if 0
+	if (unlikely(se->load.weight != NICE_0_LOAD))
+		delta = __calc_delta(delta, NICE_0_LOAD, &se->load);
+#endif
+	return delta;
+}
+
+static void update_min_vruntime(struct mycfs_rq *mycfs_rq)
+{
+	struct sched_entity *curr = mycfs_rq->curr;
+
+	u64 vruntime = mycfs_rq->min_vruntime;
+
+	if (curr) {
+		if (curr->on_rq)
+			vruntime = curr->vruntime;
+		else
+			curr = NULL;
+	}
+
+	if (mycfs_rq->rb_leftmost) {
+		struct sched_entity *se = rb_entry(mycfs_rq->rb_leftmost,
+						   struct sched_entity,
+						   run_node);
+
+		if (!curr)
+			vruntime = se->vruntime;
+		else
+			vruntime = min_vruntime(vruntime, se->vruntime);
+	}
+
+	/* ensure we never gain time by being placed backwards. */
+	mycfs_rq->min_vruntime = max_vruntime(mycfs_rq->min_vruntime, vruntime);
+}
+
+static void account_entity_enqueue(struct mycfs_rq *mycfs_rq,
+				   struct sched_entity *se)
+{
+	mycfs_rq->nr_running++;
+}
+
+static void place_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se,
+			 int initial)
+{
+	u64 vruntime = mycfs_rq->min_vruntime;
+
+	/* sleeps up to a single latency don't count. */
+	if (!initial) {
+		unsigned long thresh = sysctl_sched_latency;
+
+		/*
+		 * Halve their sleep time's effect, to allow
+		 * for a gentler effect of sleepers:
+		 */
+		if (sched_feat(GENTLE_FAIR_SLEEPERS))
+			thresh >>= 1;
+
+		vruntime -= thresh;
+	}
+
+	/* ensure we never gain time by being placed backwards. */
+	se->vruntime = max_vruntime(se->vruntime, vruntime);
+}
+
+/*
+ * Enqueue an entity into the rb-tree:
+ */
+static void __enqueue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
+{
+	struct rb_node **link = &mycfs_rq->tasks_timeline.rb_node;
+	struct rb_node *parent = NULL;
+	struct sched_entity *entry;
+	int leftmost = 1;
+
+	/* Find the right place in the rbtree: */
+	while (*link) {
+		parent = *link;
+		entry = rb_entry(parent, struct sched_entity, run_node);
+		/*
+		 * We dont care about collisions. Nodes with
+		 * the same key stay together.
+		 */
+		if (entity_before(se, entry)) {
+			link = &parent->rb_left;
+		} else {
+			link = &parent->rb_right;
+			leftmost = 0;
+		}
+	}
+
+	/*
+	 * Maintain a cache of leftmost tree entries
+	 * (it is frequently used):
+	 */
+	if (leftmost)
+		mycfs_rq->rb_leftmost = &se->run_node;
+
+	rb_link_node(&se->run_node, parent, link);
+	rb_insert_color(&se->run_node, &mycfs_rq->tasks_timeline);
+}
+
+static void __dequeue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
+{
+	if (mycfs_rq->rb_leftmost == &se->run_node) {
+		struct rb_node *next_node;
+
+		next_node = rb_next(&se->run_node);
+		mycfs_rq->rb_leftmost = next_node;
+	}
+
+	rb_erase(&se->run_node, &mycfs_rq->tasks_timeline);
+}
+
+struct sched_entity *__pick_first_entity_mycfs(struct mycfs_rq *mycfs_rq)
+{
+	struct rb_node *left = mycfs_rq->rb_leftmost;
+
+	if (!left)
+		return NULL;
+
+	return rb_entry(left, struct sched_entity, run_node);
+}
+
+static struct sched_entity *__pick_next_entity(struct sched_entity *se)
+{
+	struct rb_node *next = rb_next(&se->run_node);
+
+	if (!next)
+		return NULL;
+
+	return rb_entry(next, struct sched_entity, run_node);
+}
+
+/*
+ * Update the current task's runtime statistics.
+ */
+static void update_curr(struct mycfs_rq *mycfs_rq)
+{
+	struct sched_entity *curr = mycfs_rq->curr;
+	u64 now = rq_clock_task(rq_of(mycfs_rq));
+	u64 delta_exec;
+
+	if (unlikely(!curr))
+		return;
+
+	delta_exec = now - curr->exec_start;
+	if (unlikely((s64)delta_exec <= 0))
+		return;
+
+	curr->exec_start = now;
+
+	curr->sum_exec_runtime += delta_exec;
+
+	curr->vruntime += calc_delta_mycfs(delta_exec, curr);
+	update_min_vruntime(mycfs_rq);
+}
+
+static void update_curr_mycfs(struct rq *rq)
+{
+	update_curr(mycfs_rq_of(&rq->curr->se));
 }
 
 /*
@@ -68,6 +266,55 @@ static inline struct mycfs_rq *mycfs_rq_of(struct sched_entity *se)
 
 static void enqueue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se, int flags)
 {
+	bool renorm = !(flags & ENQUEUE_WAKEUP) || (flags & ENQUEUE_MIGRATED);
+	bool curr = mycfs_rq->curr == se;
+
+	/*
+	 * If we're the current task, we must renormalise before calling
+	 * update_curr().
+	 */
+	if (renorm && curr)
+		se->vruntime += mycfs_rq->min_vruntime;
+
+	update_curr(mycfs_rq);
+
+	/*
+	 * Otherwise, renormalise after, such that we're placed at the current
+	 * moment in time, instead of some random moment in the past. Being
+	 * placed in the past could significantly boost this task to the
+	 * fairness detriment of existing tasks.
+	 */
+	if (renorm && !curr)
+		se->vruntime += mycfs_rq->min_vruntime;
+
+	account_entity_enqueue(mycfs_rq, se);
+
+	if (flags & ENQUEUE_WAKEUP)
+		place_entity(mycfs_rq, se, 0);
+
+	if (!curr)
+		__enqueue_entity(mycfs_rq, se);
+	se->on_rq = 1;
+}
+
+static void dequeue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se,
+			   int flags)
+{
+}
+
+static void put_prev_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *prev)
+{
+	if (prev->on_rq) {
+		/*
+		 * If still on the runqueue then deactivate_task()
+		 * was not called and update_curr() has to be done:
+		 */
+		update_curr(mycfs_rq);
+
+		/* Put 'current' back into the tree. */
+		__enqueue_entity(mycfs_rq, prev);
+	}
+	mycfs_rq->curr = NULL;
 }
 
 /*
@@ -88,15 +335,9 @@ static void enqueue_task_mycfs(struct rq *rq, struct task_struct *p, int flags)
 	if (p->in_iowait)
 		cpufreq_update_this_cpu(rq, SCHED_CPUFREQ_IOWAIT);
 
-	if (!se->on_rq) {
-		enqueue_entity(mycfs_rq, se, flags);
-		mycfs_rq->h_nr_running++;
-	}
-
-	/* Update rq->nr_running */
+	enqueue_entity(mycfs_rq, se, flags);
+	mycfs_rq->h_nr_running++;
 	add_nr_running(rq, 1);
-
-	pr_crit("%s task: %d/%s\n", __func__, p->pid, p->comm);
 }
 
 /*
@@ -106,6 +347,128 @@ static void enqueue_task_mycfs(struct rq *rq, struct task_struct *p, int flags)
  */
 static void dequeue_task_mycfs(struct rq *rq, struct task_struct *p, int flags)
 {
+	struct sched_entity *se = &p->se;
+	struct mycfs_rq *mycfs_rq = mycfs_rq_of(se);
+
+	dequeue_entity(mycfs_rq, se, flags);
+	mycfs_rq->h_nr_running--;
+	sub_nr_running(rq, 1);
+}
+
+#ifdef CONFIG_SMP
+/*
+ * idle_balance_mycfs is called by schedule() if this_cpu is about to become
+ * idle. Attempts to pull tasks from other CPUs.
+ */
+static int idle_balance_mycfs(struct rq *this_rq)
+{
+	return 0;
+}
+#else
+static int idle_balance(struct rq *this_rq) { return 0; }
+#endif
+
+/*
+ * Pick next process to run:
+ */
+static struct sched_entity *pick_next_entity(struct mycfs_rq *mycfs_rq,
+					     struct sched_entity *curr)
+{
+	struct sched_entity *left = __pick_first_entity_mycfs(mycfs_rq);
+	struct sched_entity *se;
+
+	/*
+	 * If curr is set we have to see if its left of the leftmost entity
+	 * still in the tree, provided there was anything in the tree at all.
+	 */
+	if (!left || (curr && entity_before(curr, left)))
+		left = curr;
+
+	se = left; /* ideally we run the leftmost entity */
+
+	return se;
+}
+
+/*
+ * Optional action to be done while updating the load average
+ */
+#define UPDATE_TG	0x1
+#define SKIP_AGE_LOAD	0x2
+
+/* Update task and its mycfs_rq load average */
+static inline void update_load_avg(struct sched_entity *se, int flags)
+{
+}
+
+/*
+ * update_stats_curr_start
+ * We are picking a new current task - update its stats:
+ */
+static inline void
+update_stats_curr_start(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
+{
+	/* We are starting a new run period: */
+	se->exec_start = rq_clock_task(rq_of(mycfs_rq));
+}
+
+static void set_next_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
+{
+	/* 'current' is not kept within the tree. */
+	if (se->on_rq) {
+		__dequeue_entity(mycfs_rq, se);
+		update_load_avg(se, UPDATE_TG);
+	}
+
+	update_stats_curr_start(mycfs_rq, se);
+	mycfs_rq->curr = se;
+
+	se->prev_sum_exec_runtime = se->sum_exec_runtime;
+}
+
+static struct task_struct *pick_next_task_mycfs(struct rq *rq,
+						struct task_struct *prev,
+						struct pin_cookie cookie)
+{
+	struct mycfs_rq *mycfs_rq = &rq->mycfs;
+	struct sched_entity *se;
+	struct task_struct *p;
+	int new_tasks;
+
+again:
+	if (!mycfs_rq->nr_running)
+		goto idle;
+	
+	put_prev_task(rq, prev);
+
+	se = pick_next_entity(mycfs_rq, NULL);
+	set_next_entity(mycfs_rq, se);
+
+	p = task_of(se);
+
+	return p;
+
+idle:
+	/*
+	 * This is OK, because current is on_cpu, which avoids it being picked
+	 * for load-balance and preemption/IRQs are still disabled avoiding
+	 * further scheduler activity on it and we're being very careful to
+	 * re-start the picking loop.
+	 */
+	lockdep_unpin_lock(&rq->lock, cookie);
+	new_tasks = idle_balance_mycfs(rq);
+	lockdep_repin_lock(&rq->lock, cookie);
+	/*
+	 * Because idle_balance() releases (and re-acquires) rq->lock, it is
+	 * possible for any higher priority task to appear. In that case we
+	 * must re-start the pick_next_entity() loop.
+	 */
+	if (new_tasks < 0)
+		return RETRY_TASK;
+
+	if (new_tasks > 0)
+		goto again;
+
+	return NULL;
 }
 
 /*
@@ -123,28 +486,31 @@ static bool yield_to_task_mycfs(struct rq *rq, struct task_struct *p, bool preem
 }
 
 /*
+ * Called from wake_up_new_task().
  * Preempt the current task with a newly woken task if needed:
  */
-static void check_preempt_wakeup(struct rq *rq, struct task_struct *p, int wake_flags)
+static void check_preempt_wakeup_mycfs(struct rq *rq, struct task_struct *p,
+				       int wake_flags)
 {
-}
-
-static struct task_struct *pick_next_task_mycfs(struct rq *rq,
-						struct task_struct *prev,
-						struct pin_cookie cookie)
-{
-	return NULL;
+	/*
+	 * Just do nothing, we do not want any preemption here
+	 */
 }
 
 /*
- * Account for a descheduled task:
+ * put_prev_task_mycfs: account for a descheduled task.
  */
 static void put_prev_task_mycfs(struct rq *rq, struct task_struct *prev)
 {
+	struct sched_entity *se;
+	struct mycfs_rq *mycfs_rq;
+
+	se = &prev->se;
+	mycfs_rq = mycfs_rq_of(se);
+	put_prev_entity(mycfs_rq, se);
 }
 
 #ifdef CONFIG_SMP
-
 /*
  * select_task_rq_mycfs: Select target runqueue for the waking task in domains
  * that have the 'sd_flag' flag set. In practice, this is SD_BALANCE_WAKE,
@@ -165,7 +531,7 @@ select_task_rq_mycfs(struct task_struct *p, int prev_cpu, int sd_flag, int wake_
 
 /*
  * Called immediately before a task is migrated to a new cpu; task_cpu(p) and
- * cfs_rq_of(p) references at time of call are still valid and identify the
+ * mycfs_rq_of(p) references at time of call are still valid and identify the
  * previous cpu. The caller guarantees p->pi_lock or task_rq(p)->lock is held.
  */
 static void migrate_task_rq_mycfs(struct task_struct *p)
@@ -189,7 +555,7 @@ static void task_dead_mycfs(struct task_struct *p)
 /*
  * Account for a task changing its policy or group.
  *
- * This routine is mostly called to set cfs_rq->curr field when a task
+ * This routine is mostly called to set mycfs_rq->curr field when a task
  * migrates between groups/classes.
  */
 static void set_curr_task_mycfs(struct rq *rq)
@@ -204,12 +570,29 @@ static void task_tick_mycfs(struct rq *rq, struct task_struct *curr, int queued)
 }
 
 /*
- * called on fork with the child task as argument from the parent's context
+ * Called on fork with the child task as argument from the parent's context
  *  - child not yet on the tasklist
  *  - preemption disabled
  */
 static void task_fork_mycfs(struct task_struct *p)
 {
+	struct mycfs_rq *mycfs_rq;
+	struct sched_entity *curr, *se = &p->se;
+	struct rq *rq = this_rq();
+
+	raw_spin_lock(&rq->lock);
+	update_rq_clock(rq);
+
+	mycfs_rq = task_mycfs_rq(current);
+	curr = mycfs_rq->curr;
+	if (curr) {
+		update_curr(mycfs_rq);
+		se->vruntime = curr->vruntime;
+	}
+	place_entity(mycfs_rq, se, 1);
+
+	se->vruntime -= mycfs_rq->min_vruntime;
+	raw_spin_unlock(&rq->lock);
 }
 
 /*
@@ -236,10 +619,6 @@ static unsigned int get_rr_interval_mycfs(struct rq *rq, struct task_struct *tas
 	return rr_interval;
 }
 
-static void update_curr_mycfs(struct rq *rq)
-{
-}
-
 const struct sched_class mycfs_sched_class = {
 	.next			= &idle_sched_class,
 	.enqueue_task		= enqueue_task_mycfs,
@@ -247,7 +626,7 @@ const struct sched_class mycfs_sched_class = {
 	.yield_task		= yield_task_mycfs,
 	.yield_to_task		= yield_to_task_mycfs,
 
-	.check_preempt_curr	= check_preempt_wakeup,
+	.check_preempt_curr	= check_preempt_wakeup_mycfs,
 
 	.pick_next_task		= pick_next_task_mycfs,
 	.put_prev_task		= put_prev_task_mycfs,
