@@ -15,6 +15,7 @@
 #include <linux/mempolicy.h>
 #include <linux/migrate.h>
 #include <linux/task_work.h>
+#include <linux/syscalls.h>
 
 #include <trace/events/sched.h>
 
@@ -113,24 +114,20 @@ static void account_entity_enqueue(struct mycfs_rq *mycfs_rq,
 	mycfs_rq->nr_running++;
 }
 
+static void account_entity_dequeue(struct mycfs_rq *mycfs_rq,
+				   struct sched_entity *se)
+{
+	mycfs_rq->nr_running--;
+}
+
 static void place_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se,
 			 int initial)
 {
 	u64 vruntime = mycfs_rq->min_vruntime;
 
 	/* sleeps up to a single latency don't count. */
-	if (!initial) {
-		unsigned long thresh = sysctl_sched_latency;
-
-		/*
-		 * Halve their sleep time's effect, to allow
-		 * for a gentler effect of sleepers:
-		 */
-		if (sched_feat(GENTLE_FAIR_SLEEPERS))
-			thresh >>= 1;
-
-		vruntime -= thresh;
-	}
+	if (!initial)
+		vruntime -= sysctl_sched_latency;
 
 	/* ensure we never gain time by being placed backwards. */
 	se->vruntime = max_vruntime(se->vruntime, vruntime);
@@ -300,6 +297,33 @@ static void enqueue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se, i
 static void dequeue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se,
 			   int flags)
 {
+	/*
+	 * Update run-time statistics of the 'current'.
+	 */
+	update_curr(mycfs_rq);
+
+	if (se != mycfs_rq->curr)
+		__dequeue_entity(mycfs_rq, se);
+	se->on_rq = 0;
+	account_entity_dequeue(mycfs_rq, se);
+
+	/*
+	 * Normalize after update_curr(); which will also have moved
+	 * min_vruntime if @se is the one holding it back. But before doing
+	 * update_min_vruntime() again, which will discount @se's position and
+	 * can move min_vruntime forward still more.
+	 */
+	if (!(flags & DEQUEUE_SLEEP))
+		se->vruntime -= mycfs_rq->min_vruntime;
+
+	/*
+	 * Now advance min_vruntime if @se was the entity holding it back,
+	 * except when: DEQUEUE_SAVE && !DEQUEUE_MOVE, in this case we'll be
+	 * put back on, and if we advance min_vruntime, we'll be placed back
+	 * further than we started -- ie. we'll be penalized.
+	 */
+	if ((flags & (DEQUEUE_SAVE | DEQUEUE_MOVE)) == DEQUEUE_SAVE)
+		update_min_vruntime(mycfs_rq);
 }
 
 static void put_prev_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *prev)
@@ -659,4 +683,12 @@ void init_mycfs_rq(struct mycfs_rq *mycfs_rq)
 {
 	mycfs_rq->tasks_timeline = RB_ROOT;
 	mycfs_rq->min_vruntime = (u64)(-(1LL << 20));
+}
+
+SYSCALL_DEFINE2(sched_setlimit, pid_t, pid, int, limit)
+{
+	pr_info("sched_setlimit (pid: %d, limit: %d)\n",
+		pid, limit);
+
+	return 0;
 }

@@ -903,4 +903,7 @@ asmlinkage long sys_pkey_mprotect(unsigned long start, size_t len,
 asmlinkage long sys_pkey_alloc(unsigned long flags, unsigned long init_val);
 asmlinkage long sys_pkey_free(int pkey);
 
+/* For MyCFS */
+asmlinkage long sys_sched_setlimit(pid_t pid, int limit);
+
 #endif
