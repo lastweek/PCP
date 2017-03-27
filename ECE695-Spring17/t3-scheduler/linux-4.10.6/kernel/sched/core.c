@@ -2412,6 +2412,8 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 		return -EAGAIN;
 	} else if (rt_prio(p->prio)) {
 		p->sched_class = &rt_sched_class;
+	} else if (mycfs_policy(p->policy)) {
+		p->sched_class = &mycfs_sched_class;
 	} else {
 		p->sched_class = &fair_sched_class;
 	}
@@ -3954,6 +3956,8 @@ static void __setscheduler_params(struct task_struct *p,
 		__setparam_dl(p, attr);
 	else if (fair_policy(policy))
 		p->static_prio = NICE_TO_PRIO(attr->sched_nice);
+	else if (mycfs_policy(policy))
+		p->static_prio = NICE_TO_PRIO(attr->sched_nice);
 
 	/*
 	 * __sched_setscheduler() ensures attr->sched_priority == 0 when
@@ -3984,7 +3988,11 @@ static void __setscheduler(struct rq *rq, struct task_struct *p,
 		p->sched_class = &dl_sched_class;
 	else if (rt_prio(p->prio))
 		p->sched_class = &rt_sched_class;
-	else
+	else if (mycfs_policy(attr->sched_policy)) {
+		p->sched_class = &mycfs_sched_class;
+		pr_info("sched: cpu%d-task/%d/%s (tgid: %d) change to MyCFS",
+			smp_processor_id(), p->pid, p->comm, p->tgid);
+	} else
 		p->sched_class = &fair_sched_class;
 }
 
@@ -4193,6 +4201,8 @@ recheck:
 	 * but store a possible modification of reset_on_fork.
 	 */
 	if (unlikely(policy == p->policy)) {
+		if (mycfs_policy(policy) && attr->sched_nice != task_nice(p))
+			goto change;
 		if (fair_policy(policy) && attr->sched_nice != task_nice(p))
 			goto change;
 		if (rt_policy(policy) && attr->sched_priority != p->rt_priority)
