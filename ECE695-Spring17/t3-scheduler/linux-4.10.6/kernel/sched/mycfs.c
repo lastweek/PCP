@@ -133,6 +133,48 @@ static void place_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se,
 	se->vruntime = max_vruntime(se->vruntime, vruntime);
 }
 
+static inline void set_last_buddy(struct sched_entity *se)
+{
+	mycfs_rq_of(se)->last = se;
+}
+
+static inline void set_next_buddy(struct sched_entity *se)
+{
+	mycfs_rq_of(se)->next = se;
+}
+
+static inline void set_skip_buddy(struct sched_entity *se)
+{
+	mycfs_rq_of(se)->skip = se;
+}
+
+static inline void __clear_buddies_last(struct sched_entity *se)
+{
+	mycfs_rq_of(se)->last = NULL;
+}
+
+static inline void __clear_buddies_next(struct sched_entity *se)
+{
+	mycfs_rq_of(se)->next = NULL;
+}
+
+static inline void __clear_buddies_skip(struct sched_entity *se)
+{
+	mycfs_rq_of(se)->skip = NULL;
+}
+
+static void clear_buddies(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
+{
+	if (mycfs_rq->last == se)
+		__clear_buddies_last(se);
+
+	if (mycfs_rq->next == se)
+		__clear_buddies_next(se);
+
+	if (mycfs_rq->skip == se)
+		__clear_buddies_skip(se);
+}
+
 /*
  * Enqueue an entity into the rb-tree:
  */
@@ -392,8 +434,62 @@ static int idle_balance_mycfs(struct rq *this_rq)
 static int idle_balance(struct rq *this_rq) { return 0; }
 #endif
 
+static unsigned long wakeup_gran(struct sched_entity *curr,
+				 struct sched_entity *se)
+{
+	unsigned long gran = sysctl_sched_wakeup_granularity;
+
+	/*
+	 * Since its curr running now, convert the gran from real-time
+	 * to virtual-time in his units.
+	 *
+	 * By using 'se' instead of 'curr' we penalize light tasks, so
+	 * they get preempted easier. That is, if 'se' < 'curr' then
+	 * the resulting gran will be larger, therefore penalizing the
+	 * lighter, if otoh 'se' > 'curr' then the resulting gran will
+	 * be smaller, again penalizing the lighter task.
+	 *
+	 * This is especially important for buddies when the leftmost
+	 * task is higher priority than the buddy.
+	 */
+	return calc_delta_mycfs(gran, se);
+}
+
 /*
- * Pick next process to run:
+ * Should 'se' preempt 'curr'.
+ *
+ *             |s1
+ *        |s2
+ *   |s3
+ *         g
+ *      |<--->|c
+ *
+ *  w(c, s1) = -1
+ *  w(c, s2) =  0
+ *  w(c, s3) =  1
+ *
+ */
+static int wakeup_preempt_entity(struct sched_entity *curr,
+				 struct sched_entity *se)
+{
+	s64 gran, vdiff = curr->vruntime - se->vruntime;
+
+	if (vdiff <= 0)
+		return -1;
+
+	gran = wakeup_gran(curr, se);
+	if (vdiff > gran)
+		return 1;
+
+	return 0;
+}
+
+/*
+ * Pick the next process, keeping these things in mind, in this order:
+ * 1) keep things fair between processes/task groups
+ * 2) pick the "next" process, since someone really wants that to run
+ * 3) pick the "last" process, for cache locality
+ * 4) do not run the "skip" process, if something else is available
  */
 static struct sched_entity *pick_next_entity(struct mycfs_rq *mycfs_rq,
 					     struct sched_entity *curr)
@@ -408,7 +504,41 @@ static struct sched_entity *pick_next_entity(struct mycfs_rq *mycfs_rq,
 	if (!left || (curr && entity_before(curr, left)))
 		left = curr;
 
-	se = left; /* ideally we run the leftmost entity */
+	/* ideally we run the leftmost entity */
+	se = left;
+
+	/*
+	 * Avoid running the skip buddy, if running something else can
+	 * be done without getting too unfair.
+	 */
+	if (mycfs_rq->skip == se) {
+		struct sched_entity *second;
+
+		if (se == curr) {
+			second = __pick_first_entity_mycfs(mycfs_rq);
+		} else {
+			second = __pick_next_entity(se);
+			if (!second || (curr && entity_before(curr, second)))
+				second = curr;
+		}
+
+		if (second && wakeup_preempt_entity(second, left) < 1)
+			se = second;
+	}
+
+	/*
+	 * Prefer last buddy, try to return the CPU to a preempted task.
+	 */
+	if (mycfs_rq->last && wakeup_preempt_entity(mycfs_rq->last, left) < 1)
+		se = mycfs_rq->last;
+
+	/*
+	 * Someone really wants this to run. If it's not unfair, run it.
+	 */
+	if (mycfs_rq->next && wakeup_preempt_entity(mycfs_rq->next, left) < 1)
+		se = mycfs_rq->next;
+
+	clear_buddies(mycfs_rq, se);
 
 	return se;
 }
@@ -502,11 +632,44 @@ idle:
  */
 static void yield_task_mycfs(struct rq *rq)
 {
+	struct task_struct *curr = rq->curr;
+	struct mycfs_rq *mycfs_rq = task_mycfs_rq(curr);
+	struct sched_entity *se = &curr->se;
+
+	/* Are we the only task in the tree? */
+	if (unlikely(rq->nr_running == 1))
+		return;
+
+	clear_buddies(mycfs_rq, se);
+
+	update_rq_clock(rq);
+
+	/* Update run-time statistics of the 'current' */
+	update_curr(mycfs_rq);
+
+	/*
+	 * Tell update_rq_clock() that we've just updated,
+	 * so we don't do microscopic update in schedule()
+	 * and double the fastpath cost.
+	 */
+	rq_clock_skip_update(rq, true);
+
+	set_skip_buddy(se);
 }
 
 static bool yield_to_task_mycfs(struct rq *rq, struct task_struct *p, bool preempt)
 {
-	return false;
+	struct sched_entity *se = &p->se;
+
+	if (!se->on_rq)
+		return false;
+
+	/* Tell the scheduler that we'd really like pse to run next. */
+	set_next_buddy(se);
+
+	yield_task_mycfs(rq);
+
+	return true;
 }
 
 /*
@@ -516,6 +679,18 @@ static bool yield_to_task_mycfs(struct rq *rq, struct task_struct *p, bool preem
 static void check_preempt_wakeup_mycfs(struct rq *rq, struct task_struct *p,
 				       int wake_flags)
 {
+	/*
+	 * Just do nothing, we do not want any preemption here
+	 */
+}
+
+/*
+ * Called periodically by scheduler tick in HZ frequency
+ * Check if we need to preempt current task:
+ */
+static void check_preempt_tick(struct mycfs_rq *mycfs_rq, struct sched_entity *curr)
+{
+
 	/*
 	 * Just do nothing, we do not want any preemption here
 	 */
@@ -535,22 +710,11 @@ static void put_prev_task_mycfs(struct rq *rq, struct task_struct *prev)
 }
 
 #ifdef CONFIG_SMP
-/*
- * select_task_rq_mycfs: Select target runqueue for the waking task in domains
- * that have the 'sd_flag' flag set. In practice, this is SD_BALANCE_WAKE,
- * SD_BALANCE_FORK, or SD_BALANCE_EXEC.
- *
- * Balances load by selecting the idlest cpu in the idlest group, or under
- * certain conditions an idle sibling cpu if the domain has SD_WAKE_AFFINE set.
- *
- * Returns the target cpu number.
- *
- * preempt must be disabled.
- */
-static int
-select_task_rq_mycfs(struct task_struct *p, int prev_cpu, int sd_flag, int wake_flags)
+static int select_task_rq_mycfs(struct task_struct *p, int prev_cpu,
+				int sd_flag, int wake_flags)
 {
-	return smp_processor_id();
+	/* No migration now */
+	return task_cpu(p);
 }
 
 /*
@@ -560,20 +724,36 @@ select_task_rq_mycfs(struct task_struct *p, int prev_cpu, int sd_flag, int wake_
  */
 static void migrate_task_rq_mycfs(struct task_struct *p)
 {
+	/*
+	 * As blocked tasks retain absolute vruntime the migration needs to
+	 * deal with this by subtracting the old and adding the new
+	 * min_vruntime -- the latter is done by enqueue_entity() when placing
+	 * the task on the new runqueue.
+	 */
+	if (p->state == TASK_WAKING) {
+		struct sched_entity *se = &p->se;
+		struct mycfs_rq *mycfs_rq = mycfs_rq_of(se);
+		u64 min_vruntime;
+
+		min_vruntime = mycfs_rq->min_vruntime;
+		se->vruntime -= min_vruntime;
+	}
+
+	/* Tell new CPU we are migrated */
+	p->se.avg.last_update_time = 0;
+
+	/* We have migrated, no longer consider this task hot */
+	p->se.exec_start = 0;
 }
 
-static void rq_online_mycfs(struct rq *rq)
-{
-}
-
-static void rq_offline_mycfs(struct rq *rq)
-{
-}
-
+/*
+ * task_dead_mycfs
+ * Callback from finish_task_switch, after a task set its state to TASK_DEAD,
+ * which happens after a task do_exit():
+ */
 static void task_dead_mycfs(struct task_struct *p)
 {
 }
-
 #endif /* CONFIG_SMP */
 
 /*
@@ -584,13 +764,31 @@ static void task_dead_mycfs(struct task_struct *p)
  */
 static void set_curr_task_mycfs(struct rq *rq)
 {
+	struct sched_entity *se;
+	struct mycfs_rq *mycfs_rq;
+
+	se = &rq->curr->se;
+	mycfs_rq = mycfs_rq_of(se);
+	set_next_entity(mycfs_rq, se);
 }
 
 /*
+ * task_tick_mycfs
  * scheduler tick hitting a task of our scheduling class:
  */
 static void task_tick_mycfs(struct rq *rq, struct task_struct *curr, int queued)
 {
+	struct mycfs_rq *mycfs_rq;
+	struct sched_entity *se;
+
+	se = &curr->se;
+	mycfs_rq = mycfs_rq_of(se);
+
+	/* Update run-time statistics of the 'current' */
+	update_curr(mycfs_rq);
+
+	if (mycfs_rq->nr_running > 1)
+		check_preempt_tick(mycfs_rq, &curr->se);
 }
 
 /*
@@ -639,14 +837,15 @@ static unsigned int get_rr_interval_mycfs(struct rq *rq, struct task_struct *tas
 {
 	unsigned int rr_interval = 0;
 
-
 	return rr_interval;
 }
 
 const struct sched_class mycfs_sched_class = {
 	.next			= &idle_sched_class,
+
 	.enqueue_task		= enqueue_task_mycfs,
 	.dequeue_task		= dequeue_task_mycfs,
+
 	.yield_task		= yield_task_mycfs,
 	.yield_to_task		= yield_to_task_mycfs,
 
@@ -656,24 +855,32 @@ const struct sched_class mycfs_sched_class = {
 	.put_prev_task		= put_prev_task_mycfs,
 
 #ifdef CONFIG_SMP
+	/* task migration callback: */
 	.select_task_rq		= select_task_rq_mycfs,
 	.migrate_task_rq	= migrate_task_rq_mycfs,
 
-	.rq_online		= rq_online_mycfs,
-	.rq_offline		= rq_offline_mycfs,
-
+	/* task exit point callback: */
 	.task_dead		= task_dead_mycfs,
 	.set_cpus_allowed	= set_cpus_allowed_common,
 #endif
 
 	.set_curr_task          = set_curr_task_mycfs,
+
+	/* Called with HZ frequency by scheduler tick */
 	.task_tick		= task_tick_mycfs,
+
+	/* fock()-time callback: */
 	.task_fork		= task_fork_mycfs,
 
+	/*
+	 * Called when sched class changed
+	 * (via check_class_changed() only):
+	 */
 	.prio_changed		= prio_changed_mycfs,
 	.switched_from		= switched_from_mycfs,
 	.switched_to		= switched_to_mycfs,
 
+	/* Return the default timeslice of a process */
 	.get_rr_interval	= get_rr_interval_mycfs,
 
 	.update_curr		= update_curr_mycfs,
