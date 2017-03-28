@@ -2791,6 +2791,11 @@ static struct rq *finish_task_switch(struct task_struct *prev)
 		put_task_struct(prev);
 	}
 
+	if (task_has_mycfs_policy(prev)) {
+		pr_info("%s(%d): current: %d, prev: %d(state: %d, on_rq: %d)\n",
+			__func__, smp_processor_id(), current->pid, prev->pid, prev->state, prev->on_rq);
+	}
+
 	tick_nohz_task_switch();
 	return rq;
 }
@@ -3283,7 +3288,18 @@ pick_next_task(struct rq *rq, struct task_struct *prev, struct pin_cookie cookie
 
 again:
 	for_each_class(class) {
+		if (task_has_mycfs_policy(prev))
+			pr_info("%s(%d)1 pid: %d, class: %pF", __func__, smp_processor_id(), prev->pid, class);
 		p = class->pick_next_task(rq, prev, cookie);
+		if (task_has_mycfs_policy(prev)) {
+			pr_info("%s(%d)2 pid: %d, class: %pF", __func__, smp_processor_id(), prev->pid, class);
+			if (p && p != RETRY_TASK)
+				pr_info("    next-pid: %d\n", p->pid);
+			else if (p == RETRY_TASK)
+				pr_info("    retry");
+			else
+				pr_info("    null");
+		}
 		if (p) {
 			if (unlikely(p == RETRY_TASK))
 				goto again;

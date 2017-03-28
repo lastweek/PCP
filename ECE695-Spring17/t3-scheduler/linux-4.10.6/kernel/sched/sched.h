@@ -142,6 +142,11 @@ static inline int task_has_dl_policy(struct task_struct *p)
 	return dl_policy(p->policy);
 }
 
+static inline int task_has_mycfs_policy(struct task_struct *p)
+{
+	return mycfs_policy(p->policy);
+}
+
 /*
  * Tells if entity @a should preempt entity @b.
  */
