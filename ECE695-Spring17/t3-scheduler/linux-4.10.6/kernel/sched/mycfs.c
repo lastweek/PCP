@@ -1,5 +1,5 @@
 /*
- * MyCFS, modified after CFS
+ * SCHED_MYCFS class, modified after CFS
  * For Spring 2017 ECE695 task 3
  *
  * Yizhou Shan, March 2017
@@ -93,14 +93,177 @@ static void account_entity_dequeue(struct mycfs_rq *mycfs_rq,
 	mycfs_rq->nr_running--;
 }
 
+/*
+ * Virtual runtime, wall-time, and weight manipulations
+ */
+
+#define WMULT_CONST	(~0U)
+#define WMULT_SHIFT	32
+
+static void __update_inv_weight(struct load_weight *lw)
+{
+	unsigned long w;
+
+	if (likely(lw->inv_weight))
+		return;
+
+	w = scale_load_down(lw->weight);
+
+	if (BITS_PER_LONG > 32 && unlikely(w >= WMULT_CONST))
+		lw->inv_weight = 1;
+	else if (unlikely(!w))
+		lw->inv_weight = WMULT_CONST;
+	else
+		lw->inv_weight = WMULT_CONST / w;
+}
+
+/*
+ * delta_exec * weight / lw.weight
+ *   OR
+ * (delta_exec * (weight * lw->inv_weight)) >> WMULT_SHIFT
+ *
+ * Either weight := NICE_0_LOAD and lw \e sched_prio_to_wmult[], in which case
+ * we're guaranteed shift stays positive because inv_weight is guaranteed to
+ * fit 32 bits, and NICE_0_LOAD gives another 10 bits; therefore shift >= 22.
+ *
+ * Or, weight =< lw.weight (because lw.weight is the runqueue weight), thus
+ * weight/lw.weight <= 1, and therefore our shift will also be positive.
+ */
+static u64 __calc_delta(u64 delta_exec, unsigned long weight, struct load_weight *lw)
+{
+	u64 fact = scale_load_down(weight);
+	int shift = WMULT_SHIFT;
+
+	__update_inv_weight(lw);
+
+	if (unlikely(fact >> 32)) {
+		while (fact >> 32) {
+			fact >>= 1;
+			shift--;
+		}
+	}
+
+	/* hint to use a 32x32->64 mul */
+	fact = (u64)(u32)fact * lw->inv_weight;
+
+	while (fact >> 32) {
+		fact >>= 1;
+		shift--;
+	}
+
+	return mul_u64_u32_shr(delta_exec, fact, shift);
+}
+
+/*
+ * The idea is to set a period in which each task runs once.
+ *
+ * When there are too many tasks (sched_nr_latency) we have to stretch
+ * this period because otherwise the slices get too small.
+ *
+ * p = (nr <= nl) ? l : l*nr/nl
+ */
+static u64 __sched_period(unsigned long nr_running)
+{
+	if (unlikely(nr_running > sched_nr_latency))
+		return nr_running * sysctl_sched_min_granularity;
+	else
+		return sysctl_sched_latency;
+}
+
+static inline void update_load_add(struct load_weight *lw, unsigned long inc)
+{
+	lw->weight += inc;
+	lw->inv_weight = 0;
+}
+
+/*
+ * Calculate the [wall-time slice] from the period by taking a part
+ * proportional to the weight:
+ *
+ * s = p*P[w/rw]
+ */
+static u64 sched_slice(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
+{
+	u64 slice = __sched_period(mycfs_rq->nr_running + !se->on_rq);
+	struct load_weight *load = &mycfs_rq->load;
+	struct load_weight lw;
+
+	if (unlikely(!se->on_rq)) {
+		lw = mycfs_rq->load;
+
+		update_load_add(&lw, se->load.weight);
+		load = &lw;
+	}
+	slice = __calc_delta(slice, se->load.weight, load);
+
+	pr_info("%s: CPU%d, wall-time-slice=%Lu\n",
+		__func__, smp_processor_id(), slice);
+
+	return slice;
+}
+
+/**
+ * calc_delta_mycfs	-	delta /= weight
+ * @delta: physical time in nanoseconads
+ * @se: the schedule entity
+ *
+ * Calculate vruntime base on physical time and weight
+ * Currently, we assume everything is equal weight
+ */
+static inline u64 calc_delta_mycfs(u64 delta, struct sched_entity *se)
+{
+#if 0
+	if (unlikely(se->load.weight != NICE_0_LOAD))
+		delta = __calc_delta(delta, NICE_0_LOAD, &se->load);
+#endif
+	return delta;
+}
+
+/*
+ * We calculate the vruntime slice of a to-be-inserted task.
+ *
+ * vs = s/w
+ */
+static u64 sched_vslice(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
+{
+	return calc_delta_mycfs(sched_slice(mycfs_rq, se), se);
+}
+
+/*
+ * place_entity		-	Caculate the vruntime before placing into rbtree
+ *
+ * 1) A newly forked task will have some extra vruntime so it will not preempt
+ *    'current' very shortly. This keep the promises we made to 'current'.
+ * 
+ * 2) Minus the sched_latency from se->vruntime to give sleepers higher priority
+ */
 static void place_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se,
 			 int initial)
 {
 	u64 vruntime = mycfs_rq->min_vruntime;
 
+	/*
+	 * The 'current' period is already promised to the current tasks,
+	 * however the extra weight of the new task will slow them down a
+	 * little, place the new task so that it fits in the slot that
+	 * stays open at the end.
+	 */
+	if (initial && sched_feat(START_DEBIT))
+		vruntime += sched_vslice(mycfs_rq, se);
+
 	/* sleeps up to a single latency don't count. */
-	if (!initial)
-		vruntime -= sysctl_sched_latency;
+	if (!initial) {
+		unsigned long thresh = sysctl_sched_latency;
+
+		/*
+		 * Halve their sleep time's effect, to allow
+		 * for a gentler effect of sleepers:
+		 */
+		if (sched_feat(GENTLE_FAIR_SLEEPERS))
+			thresh >>= 1;
+
+		vruntime -= thresh;
+	}
 
 	/* ensure we never gain time by being placed backwards. */
 	se->vruntime = max_vruntime(se->vruntime, vruntime);
@@ -154,6 +317,9 @@ static void __enqueue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
 	struct rb_node *parent = NULL;
 	struct sched_entity *entry;
 	int leftmost = 1;
+
+	pr_info("%s: CPU%d, pid: %d, vruntime: %Lu\n",
+		__func__, smp_processor_id(), task_of(se)->pid, se->vruntime);
 
 	/* Find the right place in the rbtree: */
 	while (*link) {
@@ -224,79 +390,8 @@ static struct sched_entity *__pick_next_entity(struct sched_entity *se)
 	return rb_entry(next, struct sched_entity, run_node);
 }
 
-#define WMULT_CONST	(~0U)
-#define WMULT_SHIFT	32
-
-static void __update_inv_weight(struct load_weight *lw)
-{
-	unsigned long w;
-
-	if (likely(lw->inv_weight))
-		return;
-
-	w = scale_load_down(lw->weight);
-
-	if (BITS_PER_LONG > 32 && unlikely(w >= WMULT_CONST))
-		lw->inv_weight = 1;
-	else if (unlikely(!w))
-		lw->inv_weight = WMULT_CONST;
-	else
-		lw->inv_weight = WMULT_CONST / w;
-}
-
-/*
- * delta_exec * weight / lw.weight
- *   OR
- * (delta_exec * (weight * lw->inv_weight)) >> WMULT_SHIFT
- *
- * Either weight := NICE_0_LOAD and lw \e sched_prio_to_wmult[], in which case
- * we're guaranteed shift stays positive because inv_weight is guaranteed to
- * fit 32 bits, and NICE_0_LOAD gives another 10 bits; therefore shift >= 22.
- *
- * Or, weight =< lw.weight (because lw.weight is the runqueue weight), thus
- * weight/lw.weight <= 1, and therefore our shift will also be positive.
- */
-static u64 __calc_delta(u64 delta_exec, unsigned long weight, struct load_weight *lw)
-{
-	u64 fact = scale_load_down(weight);
-	int shift = WMULT_SHIFT;
-
-	__update_inv_weight(lw);
-
-	if (unlikely(fact >> 32)) {
-		while (fact >> 32) {
-			fact >>= 1;
-			shift--;
-		}
-	}
-
-	/* hint to use a 32x32->64 mul */
-	fact = (u64)(u32)fact * lw->inv_weight;
-
-	while (fact >> 32) {
-		fact >>= 1;
-		shift--;
-	}
-
-	return mul_u64_u32_shr(delta_exec, fact, shift);
-}
-
 /**
- * calc_delta_mycfs	-	delta /= weight
- * @delta: physical time in nanoseconads
- * @se: the schedule entity
- *
- * Calculate vruntime base on physical time and weight
- */
-static inline u64 calc_delta_mycfs(u64 delta, struct sched_entity *se)
-{
-	if (unlikely(se->load.weight != NICE_0_LOAD))
-		delta = __calc_delta(delta, NICE_0_LOAD, &se->load);
-	return delta;
-}
-
-/*
- * update_min_vruntime
+ * update_min_vruntime		-	Update mycfs_rq->min_vruntime
  *
  * Find the minimum vruntime of current task and leftmost task in runqueue.
  * Set this runtime as min_vruntime if it is greater than current value of
@@ -331,9 +426,10 @@ static void update_min_vruntime(struct mycfs_rq *mycfs_rq)
 
 /*
  * Update the current task's runtime statistics, including
- *	- exec_start
- *	- sum_exec_runtime
- *	- vruntime
+ *	- se->exec_start
+ *	- se->sum_exec_runtime
+ *	- se->vruntime
+ *	- mycfs_rq->min_vruntime
  */
 static void update_curr(struct mycfs_rq *mycfs_rq)
 {
@@ -349,9 +445,13 @@ static void update_curr(struct mycfs_rq *mycfs_rq)
 		return;
 
 	curr->exec_start = now;
-	curr->sum_exec_runtime += delta_exec;
-	curr->vruntime += calc_delta_mycfs(delta_exec, curr);
 
+	schedstat_set(curr->statistics.exec_max,
+		      max(delta_exec, curr->statistics.exec_max));
+
+	curr->sum_exec_runtime += delta_exec;
+
+	curr->vruntime += calc_delta_mycfs(delta_exec, curr);
 	update_min_vruntime(mycfs_rq);
 }
 
@@ -359,36 +459,6 @@ static void update_curr_mycfs(struct rq *rq)
 {
 	update_curr(mycfs_rq_of(&rq->curr->se));
 }
-
-/*
- * MIGRATION
- *
- *	dequeue
- *	  update_curr()
- *	    update_min_vruntime()
- *	  vruntime -= min_vruntime
- *
- *	enqueue
- *	  update_curr()
- *	    update_min_vruntime()
- *	  vruntime += min_vruntime
- *
- * this way the vruntime transition between RQs is done when both
- * min_vruntime are up-to-date.
- *
- * WAKEUP (remote)
- *
- *	->migrate_task_rq_fair() (p->state == TASK_WAKING)
- *	  vruntime -= min_vruntime
- *
- *	enqueue
- *	  update_curr()
- *	    update_min_vruntime()
- *	  vruntime += min_vruntime
- *
- * this way we don't have the most up-to-date min_vruntime on the originating
- * CPU and an up-to-date min_vruntime on the destination CPU.
- */
 
 static void enqueue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se, int flags)
 {
@@ -439,6 +509,9 @@ static void enqueue_task_mycfs(struct rq *rq, struct task_struct *p, int flags)
 	enqueue_entity(mycfs_rq, se, flags);
 	mycfs_rq->h_nr_running++;
 	add_nr_running(rq, 1);
+
+	pr_info("%s: CPU%d, pid: %d, se->vruntime=%Lu\n",
+		__func__, smp_processor_id(), p->pid, se->vruntime);
 }
 
 static void dequeue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se,
@@ -448,6 +521,8 @@ static void dequeue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se,
 	 * Update run-time statistics of the 'current'.
 	 */
 	update_curr(mycfs_rq);
+
+	clear_buddies(mycfs_rq, se);
 
 	if (se != mycfs_rq->curr)
 		__dequeue_entity(mycfs_rq, se);
@@ -486,6 +561,9 @@ static void dequeue_task_mycfs(struct rq *rq, struct task_struct *p, int flags)
 	dequeue_entity(mycfs_rq, se, flags);
 	mycfs_rq->h_nr_running--;
 	sub_nr_running(rq, 1);
+
+	pr_info("%s: CPU%d, pid: %d, se->vruntime=%Lu\n",
+		__func__, smp_processor_id(), p->pid, se->vruntime);
 }
 
 static unsigned long wakeup_gran(struct sched_entity *curr,
@@ -632,6 +710,7 @@ static void put_prev_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *prev
 		__enqueue_entity(mycfs_rq, prev);
 	}
 	mycfs_rq->curr = NULL;
+	pr_info("%s: CPU%d, pid: %d exit", __func__, smp_processor_id(), current->pid);
 }
 
 static void set_next_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
@@ -658,7 +737,7 @@ static struct task_struct *pick_next_task_mycfs(struct rq *rq,
 
 	if (!mycfs_rq->nr_running)
 		return NULL;
-	
+
 	put_prev_task(rq, prev);
 
 	se = pick_next_entity(mycfs_rq, NULL);
@@ -848,6 +927,9 @@ static void task_fork_mycfs(struct task_struct *p)
 	struct sched_entity *curr, *se = &p->se;
 	struct rq *rq = this_rq();
 
+	pr_info("%s: CPU%d, %d/%s",
+		__func__, smp_processor_id(), p->pid, p->comm);
+
 	raw_spin_lock(&rq->lock);
 	update_rq_clock(rq);
 
@@ -920,7 +1002,7 @@ static inline bool vruntime_normalized(struct task_struct *p)
 	return false;
 }
 
-/*
+/**
  * switched_from_mycfs
  * Callback function when task @p changed its sched class from MyCFS
  */
@@ -928,6 +1010,8 @@ static void switched_from_mycfs(struct rq *rq, struct task_struct *p)
 {
 	struct sched_entity *se = &p->se;
 	struct mycfs_rq *mycfs_rq = mycfs_rq_of(se);
+
+	cpufreq_update_util(rq, 0);
 
 	if (!vruntime_normalized(p)) {
 		/*
@@ -939,7 +1023,7 @@ static void switched_from_mycfs(struct rq *rq, struct task_struct *p)
 	}
 }
 
-/*
+/**
  * switched_to_mycfs
  * Callback function when task @p changed its sched class to MyCFS
  */
@@ -948,8 +1032,23 @@ static void switched_to_mycfs(struct rq *rq, struct task_struct *p)
 	struct sched_entity *se = &p->se;
 	struct mycfs_rq *mycfs_rq = mycfs_rq_of(se);
 
+	/* Take a note about CPU utilization changes */
+	cpufreq_update_util(rq, 0);
+
 	if (!vruntime_normalized(p))
 		se->vruntime += mycfs_rq->min_vruntime;
+
+	if (task_on_rq_queued(p)) {
+		/*
+		 * We were most likely switched from sched_cfs, so
+		 * kick off the schedule if running, otherwise just see
+		 * if we can still preempt the current task:
+		 */
+		if (rq->curr == p)
+			resched_curr(rq);
+		else
+			check_preempt_curr(rq, p, 0);
+	}
 }
 
 static unsigned int get_rr_interval_mycfs(struct rq *rq,
@@ -1008,6 +1107,7 @@ void init_mycfs_rq(struct mycfs_rq *mycfs_rq)
 {
 	mycfs_rq->tasks_timeline = RB_ROOT;
 	mycfs_rq->min_vruntime = (u64)(-(1LL << 20));
+	mycfs_rq->min_vruntime = 0;
 }
 
 SYSCALL_DEFINE2(sched_setlimit, pid_t, pid, int, limit)
