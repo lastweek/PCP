@@ -148,9 +148,6 @@ static void clear_buddies(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
 		__clear_buddies_skip(se);
 }
 
-/*
- * Enqueue an entity into the rb-tree:
- */
 static void __enqueue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
 {
 	struct rb_node **link = &mycfs_rq->tasks_timeline.rb_node;
@@ -205,6 +202,16 @@ struct sched_entity *__pick_first_entity_mycfs(struct mycfs_rq *mycfs_rq)
 		return NULL;
 
 	return rb_entry(left, struct sched_entity, run_node);
+}
+
+struct sched_entity *__pick_last_entity_mycfs(struct mycfs_rq *mycfs_rq)
+{
+	struct rb_node *last = rb_last(&mycfs_rq->tasks_timeline);
+
+	if (!last)
+		return NULL;
+
+	return rb_entry(last, struct sched_entity, run_node);
 }
 
 static struct sched_entity *__pick_next_entity(struct sched_entity *se)
@@ -411,9 +418,27 @@ static void enqueue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se, i
 	if (flags & ENQUEUE_WAKEUP)
 		place_entity(mycfs_rq, se, 0);
 
+	/* curr is not kept in rbtree */
 	if (!curr)
 		__enqueue_entity(mycfs_rq, se);
 	se->on_rq = 1;
+}
+
+/*
+ * The enqueue_task method is called before nr_running is increased.
+ * Here we update the mycfs scheduling stats and then put the task
+ * into the rbtree:
+ */
+static void enqueue_task_mycfs(struct rq *rq, struct task_struct *p, int flags)
+{
+	struct sched_entity *se = &p->se;
+	struct mycfs_rq *mycfs_rq = mycfs_rq_of(se);
+
+	WARN_ON_ONCE(se->on_rq);
+
+	enqueue_entity(mycfs_rq, se, flags);
+	mycfs_rq->h_nr_running++;
+	add_nr_running(rq, 1);
 }
 
 static void dequeue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se,
@@ -449,32 +474,6 @@ static void dequeue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se,
 }
 
 /*
- * The enqueue_task method is called before nr_running is increased.
- * Here we update the mycfs scheduling stats and then put the task
- * into the rbtree:
- */
-static void enqueue_task_mycfs(struct rq *rq, struct task_struct *p, int flags)
-{
-	struct sched_entity *se = &p->se;
-	struct mycfs_rq *mycfs_rq = mycfs_rq_of(se);
-
-	/*
-	 * If in_iowait is set, the code below may not trigger any cpufreq
-	 * utilization updates, so do it here explicitly with the IOWAIT flag
-	 * passed.
-	 */
-	if (p->in_iowait)
-		cpufreq_update_this_cpu(rq, SCHED_CPUFREQ_IOWAIT);
-
-	/* Someone is not doing his job: */
-	WARN_ON_ONCE(se->on_rq);
-
-	enqueue_entity(mycfs_rq, se, flags);
-	mycfs_rq->h_nr_running++;
-	add_nr_running(rq, 1);
-}
-
-/*
  * The dequeue_task method is called before nr_running is
  * decreased. We remove the task from the rbtree and
  * update the mycfs scheduling stats:
@@ -488,19 +487,6 @@ static void dequeue_task_mycfs(struct rq *rq, struct task_struct *p, int flags)
 	mycfs_rq->h_nr_running--;
 	sub_nr_running(rq, 1);
 }
-
-#ifdef CONFIG_SMP
-/*
- * idle_balance_mycfs is called by schedule() if this_cpu is about to become
- * idle. Attempts to pull tasks from other CPUs.
- */
-static int idle_balance_mycfs(struct rq *this_rq)
-{
-	return 0;
-}
-#else
-static int idle_balance(struct rq *this_rq) { return 0; }
-#endif
 
 static unsigned long wakeup_gran(struct sched_entity *curr,
 				 struct sched_entity *se)
@@ -669,43 +655,20 @@ static struct task_struct *pick_next_task_mycfs(struct rq *rq,
 	struct mycfs_rq *mycfs_rq = &rq->mycfs;
 	struct sched_entity *se;
 	struct task_struct *p;
-	int new_tasks;
 
-again:
 	if (!mycfs_rq->nr_running)
-		goto idle;
+		return NULL;
 	
 	put_prev_task(rq, prev);
 
 	se = pick_next_entity(mycfs_rq, NULL);
+	if (WARN_ON_ONCE(!se))
+		return NULL;
 	set_next_entity(mycfs_rq, se);
 
 	p = task_of(se);
 
 	return p;
-
-idle:
-	/*
-	 * This is OK, because current is on_cpu, which avoids it being picked
-	 * for load-balance and preemption/IRQs are still disabled avoiding
-	 * further scheduler activity on it and we're being very careful to
-	 * re-start the picking loop.
-	 */
-	lockdep_unpin_lock(&rq->lock, cookie);
-	new_tasks = idle_balance_mycfs(rq);
-	lockdep_repin_lock(&rq->lock, cookie);
-	/*
-	 * Because idle_balance() releases (and re-acquires) rq->lock, it is
-	 * possible for any higher priority task to appear. In that case we
-	 * must re-start the pick_next_entity() loop.
-	 */
-	if (new_tasks < 0)
-		return RETRY_TASK;
-
-	if (new_tasks > 0)
-		goto again;
-
-	return NULL;
 }
 
 /*
@@ -987,18 +950,6 @@ static void switched_to_mycfs(struct rq *rq, struct task_struct *p)
 
 	if (!vruntime_normalized(p))
 		se->vruntime += mycfs_rq->min_vruntime;
-
-	if (task_on_rq_queued(p)) {
-		/*
-		 * We were most likely switched from sched_rt, so
-		 * kick off the schedule if running, otherwise just see
-		 * if we can still preempt the current task.
-		 */
-		if (rq->curr == p)
-			resched_curr(rq);
-		else
-			check_preempt_curr(rq, p, 0);
-	}
 }
 
 static unsigned int get_rr_interval_mycfs(struct rq *rq,
