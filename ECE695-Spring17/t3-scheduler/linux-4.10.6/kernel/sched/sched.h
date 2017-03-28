@@ -380,9 +380,12 @@ struct cfs_bandwidth { };
 
 /* MyCFS-related fields in a runqueue */
 struct mycfs_rq {
+	struct load_weight load;
 	unsigned int nr_running, h_nr_running;
 
 	u64 exec_clock;
+
+	/* minimum run time of any task in the MyCFS runqueue */
 	u64 min_vruntime;
 
 	struct rb_root tasks_timeline;
@@ -1738,7 +1741,11 @@ static inline void double_rq_unlock(struct rq *rq1, struct rq *rq2)
 extern struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq);
 extern struct sched_entity *__pick_last_entity(struct cfs_rq *cfs_rq);
 
+struct sched_entity *__pick_first_entity_mycfs(struct mycfs_rq *mycfs_rq);
+struct sched_entity *__pick_last_entity_mycfs(struct mycfs_rq *mycfs_rq);
+
 #ifdef	CONFIG_SCHED_DEBUG
+extern void print_mycfs_stats(struct seq_file *m, int cpu);
 extern void print_cfs_stats(struct seq_file *m, int cpu);
 extern void print_rt_stats(struct seq_file *m, int cpu);
 extern void print_dl_stats(struct seq_file *m, int cpu);

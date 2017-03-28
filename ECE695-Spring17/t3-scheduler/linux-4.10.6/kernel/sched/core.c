@@ -3990,7 +3990,7 @@ static void __setscheduler(struct rq *rq, struct task_struct *p,
 		p->sched_class = &rt_sched_class;
 	else if (mycfs_policy(attr->sched_policy)) {
 		p->sched_class = &mycfs_sched_class;
-		pr_info("sched: cpu%d-task/%d/%s (tgid: %d) change to MyCFS",
+		pr_info("sched: cpu%d-%d/%s (tgid: %d) change to MyCFS",
 			smp_processor_id(), p->pid, p->comm, p->tgid);
 	} else
 		p->sched_class = &fair_sched_class;
