@@ -62,7 +62,7 @@ static inline bool has_limit(struct mycfs_rq *mycfs_rq,
 {
 	if (se->mycfs_limit != 0 && se->mycfs_limit < mycfs_rq->period)
 		return true;
-	return false
+	return false;
 }
 
 static inline struct task_struct *task_of(struct sched_entity *se)
@@ -970,7 +970,7 @@ static void task_fork_mycfs(struct task_struct *p)
 	}
 
 	/* Inherit period limit */
-	se->mycfs_limit = current->mycfs_limit;
+	se->mycfs_limit = current->se.mycfs_limit;
 
 	se->vruntime -= mycfs_rq->min_vruntime;
 	raw_spin_unlock(&rq->lock);
@@ -1144,6 +1144,8 @@ static int do_sched_setlimit(struct task_struct *p, u64 limit)
 		__func__, smp_processor_id(), p->pid, p->comm, limit);
 
 	p->se.mycfs_limit = limit;
+
+	return 0;
 }
 
 SYSCALL_DEFINE2(sched_setlimit, pid_t, pid, int, limit)
@@ -1155,7 +1157,7 @@ SYSCALL_DEFINE2(sched_setlimit, pid_t, pid, int, limit)
 		return -EINVAL;
 
 	ret = -ESRCH;
-	p = find_process_by_pid(pid);
+	p = pid ? find_task_by_vpid(pid) : current;
 	if (p)
 		ret = do_sched_setlimit(p, limit * NSEC_PER_MSEC);
 	return ret;
