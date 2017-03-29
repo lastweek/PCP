@@ -36,7 +36,14 @@
 
 #include "sched.h"
 
-static int mycfs_debug = 1;
+static int mycfs_debug = 0;
+
+static int __init mycfs_set_debug(char *arg)
+{
+	mycfs_debug = 1;
+	return 0;
+}
+__setup("mycfs_debug", mycfs_set_debug);
 
 #define mycfs_printk(s, a...)					\
 do {								\
@@ -46,6 +53,17 @@ do {								\
 		pr_cont(s, ##a);				\
 	}							\
 } while (0)
+
+/* By default, period is 100ms */
+#define MYCFS_PREIOD	100000ULL
+
+static inline bool has_limit(struct mycfs_rq *mycfs_rq,
+			     struct sched_entity *se)
+{
+	if (se->mycfs_limit != 0 && se->mycfs_limit < mycfs_rq->period)
+		return true;
+	return false;
+}
 
 static inline struct task_struct *task_of(struct sched_entity *se)
 {
@@ -209,8 +227,8 @@ static u64 sched_slice(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
 	}
 	slice = __calc_delta(slice, se->load.weight, load);
 
-	pr_info("%s: CPU%d, wall-time-slice=%Lu\n",
-		__func__, smp_processor_id(), slice);
+	mycfs_printk("slice:%Lu,mycfs->min_vrt:%Lu,se->vrt:%Lu\n",
+		slice, mycfs_rq->min_vruntime, se->vruntime);
 
 	return slice;
 }
@@ -331,6 +349,8 @@ static void __enqueue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
 	struct sched_entity *entry;
 	int leftmost = 1;
 
+	mycfs_printk("pid:%d", task_of(se)->pid);
+
 	/* Find the right place in the rbtree: */
 	while (*link) {
 		parent = *link;
@@ -360,6 +380,8 @@ static void __enqueue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
 
 static void __dequeue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
 {
+	mycfs_printk("pid:%d", task_of(se)->pid);
+
 	if (mycfs_rq->rb_leftmost == &se->run_node) {
 		struct rb_node *next_node;
 
@@ -503,7 +525,7 @@ static void enqueue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se, i
 		__enqueue_entity(mycfs_rq, se);
 	se->on_rq = 1;
 
-	mycfs_printk("pid:%d,state:%d,p->on_rq:%d,se->on_rq:%d,se->vrt:%Lu",
+	mycfs_printk("pid:%d,state:%ld,p->on_rq:%d,se->on_rq:%d,se->vrt:%Lu",
 		task_of(se)->pid, task_of(se)->state, task_of(se)->on_rq,
 		se->on_rq, se->vruntime);
 }
@@ -556,7 +578,7 @@ static void dequeue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se,
 	if ((flags & (DEQUEUE_SAVE | DEQUEUE_MOVE)) == DEQUEUE_SAVE)
 		update_min_vruntime(mycfs_rq);
 
-	mycfs_printk("pid:%d,state:%d,p->on_rq:%d,se->on_rq:%d,se->vrt:%Lu",
+	mycfs_printk("pid:%d,state:%ld,p->on_rq:%d,se->on_rq:%d,se->vrt:%Lu",
 		task_of(se)->pid, task_of(se)->state, task_of(se)->on_rq,
 		se->on_rq, se->vruntime);
 }
@@ -927,8 +949,6 @@ static void task_fork_mycfs(struct task_struct *p)
 	struct sched_entity *curr, *se = &p->se;
 	struct rq *rq = this_rq();
 
-	mycfs_printk("parent:%d,child:%d", current->pid, p->pid);
-
 	raw_spin_lock(&rq->lock);
 	update_rq_clock(rq);
 
@@ -949,8 +969,15 @@ static void task_fork_mycfs(struct task_struct *p)
 		resched_curr(rq);
 	}
 
+	/* Inherit period limit */
+	se->mycfs_limit = current->se.mycfs_limit;
+
 	se->vruntime -= mycfs_rq->min_vruntime;
 	raw_spin_unlock(&rq->lock);
+
+	mycfs_printk("P-p:%d/l:%Lu/vrt:%Lu, C-p:%d/l:%Lu/vrt:%Lu",
+		current->pid, current->se.mycfs_limit, current->se.vruntime,
+		p->pid, p->se.mycfs_limit, p->se.vruntime);
 }
 
 /*
@@ -1106,12 +1133,33 @@ void init_mycfs_rq(struct mycfs_rq *mycfs_rq)
 {
 	mycfs_rq->tasks_timeline = RB_ROOT;
 	mycfs_rq->min_vruntime = 0;
+	mycfs_rq->period = MYCFS_PREIOD;
+
+	printk_once("MyCFS period: %Lu ns", MYCFS_PREIOD);
+}
+
+static int do_sched_setlimit(struct task_struct *p, u64 limit)
+{
+	p->se.mycfs_limit = limit;
+
+	return 0;
 }
 
 SYSCALL_DEFINE2(sched_setlimit, pid_t, pid, int, limit)
 {
-	pr_info("sched_setlimit (pid: %d, limit: %d)\n",
-		pid, limit);
+	struct task_struct *p;
+	int ret;
 
-	return 0;
+	if (pid < 0 || limit < 0 || limit >= (MYCFS_PREIOD/1000))
+		return -EINVAL;
+
+	ret = -ESRCH;
+	p = pid ? find_task_by_vpid(pid) : current;
+	if (p) {
+		pr_info("%s(CPU%d): %d/%s, limit: %Lu",
+			__func__, smp_processor_id(), p->pid, p->comm, limit*1000);
+
+		ret = do_sched_setlimit(p, limit * 1000);
+	}
+	return ret;
 }

@@ -497,6 +497,8 @@ void print_mycfs_stats(struct seq_file *m, int cpu)
 			SPLIT_NS(min_vruntime));
 	SEQ_printf(m, "  .%-30s: %Ld.%06ld\n", "max_vruntime",
 			SPLIT_NS(max_vruntime));
+	SEQ_printf(m, "  .%-30s: %Ld.%06ld\n", "period",
+			SPLIT_NS(mycfs_rq->period));
 	spread = max_vruntime - MIN_vruntime;
 	SEQ_printf(m, "  .%-30s: %Ld.%06ld\n", "spread",
 			SPLIT_NS(spread));

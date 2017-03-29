@@ -3286,13 +3286,6 @@ pick_next_task(struct rq *rq, struct task_struct *prev, struct pin_cookie cookie
 again:
 	for_each_class(class) {
 		p = class->pick_next_task(rq, prev, cookie);
-		if (task_has_mycfs_policy(prev)) {
-			pr_info("%s(CPU%d) pid: %d, class: %pF", __func__, smp_processor_id(), prev->pid, class);
-			if (p && p!=RETRY_TASK)
-				pr_info("   next: %d", p->pid);
-			else if (!p)
-				pr_info("   null");
-		}
 		if (p) {
 			if (unlikely(p == RETRY_TASK))
 				goto again;

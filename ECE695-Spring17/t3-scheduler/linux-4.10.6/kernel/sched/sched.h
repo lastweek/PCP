@@ -390,6 +390,7 @@ struct mycfs_rq {
 	struct load_weight load;
 	unsigned int nr_running, h_nr_running;
 
+	u64 period;
 	u64 exec_clock;
 
 	/* minimum run time of any task in the MyCFS runqueue */
