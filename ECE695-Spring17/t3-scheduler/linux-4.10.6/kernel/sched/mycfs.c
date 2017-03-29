@@ -36,7 +36,7 @@
 
 #include "sched.h"
 
-static int mycfs_debug = 0;
+static int mycfs_debug = 1;
 
 #define mycfs_printk(s, a...)					\
 do {								\
@@ -432,10 +432,6 @@ static void update_min_vruntime(struct mycfs_rq *mycfs_rq)
 
 	/* ensure we never gain time by being placed backwards. */
 	mycfs_rq->min_vruntime = max_vruntime(mycfs_rq->min_vruntime, vruntime);
-
-	mycfs_printk("current: %d, mycfs->curr: %d, min_vruntime: %Lu",
-		current->pid, mycfs_rq->curr ? task_of(mycfs_rq->curr)->pid : -1,
-		mycfs_rq->min_vruntime);
 }
 
 /*
@@ -506,6 +502,10 @@ static void enqueue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se, i
 	if (!curr)
 		__enqueue_entity(mycfs_rq, se);
 	se->on_rq = 1;
+
+	mycfs_printk("pid:%d,state:%d,p->on_rq:%d,se->on_rq:%d,se->vrt:%Lu",
+		task_of(se)->pid, task_of(se)->state, task_of(se)->on_rq,
+		se->on_rq, se->vruntime);
 }
 
 /*
@@ -555,6 +555,10 @@ static void dequeue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se,
 	 */
 	if ((flags & (DEQUEUE_SAVE | DEQUEUE_MOVE)) == DEQUEUE_SAVE)
 		update_min_vruntime(mycfs_rq);
+
+	mycfs_printk("pid:%d,state:%d,p->on_rq:%d,se->on_rq:%d,se->vrt:%Lu",
+		task_of(se)->pid, task_of(se)->state, task_of(se)->on_rq,
+		se->on_rq, se->vruntime);
 }
 
 /*
@@ -705,6 +709,9 @@ static inline void update_stats_curr_start(struct mycfs_rq *mycfs_rq,
 
 static void put_prev_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *prev)
 {
+	mycfs_printk("pid:%d,se->on_rq:%d",
+		task_of(prev)->pid, prev->on_rq);
+
 	if (prev->on_rq) {
 		/*
 		 * If still on the runqueue then deactivate_task()
@@ -748,6 +755,9 @@ static struct task_struct *pick_next_task_mycfs(struct rq *rq,
 	se = pick_next_entity(mycfs_rq, NULL);
 	set_next_entity(mycfs_rq, se);
 	p = task_of(se);
+
+	mycfs_printk("pid:%d,nr_running:%d",
+		p->pid, mycfs_rq->nr_running);
 
 	return p;
 }
@@ -886,6 +896,8 @@ static void set_curr_task_mycfs(struct rq *rq)
 	se = &rq->curr->se;
 	mycfs_rq = mycfs_rq_of(se);
 	set_next_entity(mycfs_rq, se);
+
+	mycfs_printk("pid:%d", task_of(se)->pid);
 }
 
 /**
