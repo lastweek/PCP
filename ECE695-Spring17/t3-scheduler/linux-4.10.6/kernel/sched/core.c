@@ -2793,11 +2793,6 @@ static struct rq *finish_task_switch(struct task_struct *prev)
 		put_task_struct(prev);
 	}
 
-	if (task_has_mycfs_policy(prev) || task_has_mycfs_policy(current)) {
-		pr_info("%s(CPU%d),current:%d,prev:%d(state:%d,on_rq:%d),irq_disabled:%d",
-			__func__, smp_processor_id(), current->pid, prev->pid, prev->state, prev->on_rq, !!irqs_disabled());
-	}
-
 	tick_nohz_task_switch();
 	return rq;
 }
@@ -2856,11 +2851,6 @@ asmlinkage __visible void schedule_tail(struct task_struct *prev)
 	 * and the preempt_enable() will end up enabling preemption (on
 	 * PREEMPT_COUNT kernels).
 	 */
-
-	if (task_has_mycfs_policy(prev) || task_has_mycfs_policy(current)) {
-		pr_info("%s(CPU%d) prev:%d,current:%d",
-			__func__, smp_processor_id(), prev->pid, current->pid);
-	}
 
 	rq = finish_task_switch(prev);
 	balance_callback(rq);
@@ -3296,15 +3286,6 @@ pick_next_task(struct rq *rq, struct task_struct *prev, struct pin_cookie cookie
 again:
 	for_each_class(class) {
 		p = class->pick_next_task(rq, prev, cookie);
-		if (task_has_mycfs_policy(prev) || task_has_mycfs_policy(current)) {
-			pr_info("%s(CPU%d) pid: %d, class: %pF", __func__, smp_processor_id(), prev->pid, class);
-			if (p && p != RETRY_TASK)
-				pr_info("    next-pid: %d\n", p->pid);
-			else if (p == RETRY_TASK)
-				pr_info("    retry");
-			else
-				pr_info("    null");
-		}
 		if (p) {
 			if (unlikely(p == RETRY_TASK))
 				goto again;

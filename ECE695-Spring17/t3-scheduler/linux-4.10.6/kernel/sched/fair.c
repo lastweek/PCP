@@ -6220,6 +6220,9 @@ pick_next_task_fair(struct rq *rq, struct task_struct *prev, struct pin_cookie c
 	struct task_struct *p;
 	int new_tasks;
 
+	if (unlikely(task_has_mycfs_policy(prev)))
+		return NULL;
+
 again:
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	if (!cfs_rq->nr_running)
