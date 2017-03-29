@@ -18,7 +18,7 @@
  *
  */
 
-#define pr_fmt(fmt) "MYCFS: " fmt
+#define pr_fmt(fmt) "MyCFS: " fmt
 
 #include <linux/sched.h>
 #include <linux/latencytop.h>
@@ -41,8 +41,8 @@ static int mycfs_debug = 1;
 #define mycfs_printk(s, a...)					\
 do {								\
 	if (mycfs_debug) {					\
-		pr_info("CPU%2d %s: ",				\
-			smp_processor_id(), __func__);		\
+		pr_info("%s(CPU%d): ",				\
+			__func__, smp_processor_id());		\
 		pr_cont(s, ##a);				\
 	}							\
 } while (0)
@@ -756,7 +756,7 @@ static struct task_struct *pick_next_task_mycfs(struct rq *rq,
 	if (!mycfs_rq->nr_running)
 		return NULL;
 
-	mycfs_printk("prev: %d, nr_running: %d",
+	mycfs_printk("(1) prev: %d, nr_running: %d",
 		prev->pid, mycfs_rq->nr_running);
 
 	put_prev_task(rq, prev);
@@ -765,7 +765,7 @@ static struct task_struct *pick_next_task_mycfs(struct rq *rq,
 	set_next_entity(mycfs_rq, se);
 	p = task_of(se);
 
-	mycfs_printk("p: %d, prev: %d, nr_running: %d",
+	mycfs_printk("(2) p: %d, prev: %d, nr_running: %d",
 		p->pid, prev->pid, mycfs_rq->nr_running);
 
 	return p;
@@ -887,8 +887,7 @@ static int select_task_rq_mycfs(struct task_struct *p, int prev_cpu,
  */
 static void task_dead_mycfs(struct task_struct *p)
 {
-	pr_info("%s: CPU%d, Deadpid: %d, Curpid: %d",
-		__func__, smp_processor_id(), p->pid, current->pid);
+	mycfs_printk("pid:%d,comm:%s", p->pid, p->comm);
 }
 #endif /* CONFIG_SMP */
 
@@ -914,11 +913,12 @@ static void set_curr_task_mycfs(struct rq *rq)
  */
 static void task_tick_mycfs(struct rq *rq, struct task_struct *curr, int queued)
 {
-	struct mycfs_rq *mycfs_rq;
-	struct sched_entity *se;
+	struct sched_entity *se = &curr->se;
+	struct mycfs_rq *mycfs_rq = mycfs_rq_of(se);
 
-	se = &curr->se;
-	mycfs_rq = mycfs_rq_of(se);
+	mycfs_printk("pid:%d,se->vrt:%Lu,mycfs->vrt:%Lu,nr_running:%d",
+		curr->pid, se->vruntime, mycfs_rq->min_vruntime,
+		mycfs_rq->nr_running);
 
 	/* Update run-time statistics of the 'current' */
 	update_curr(mycfs_rq);
@@ -938,8 +938,7 @@ static void task_fork_mycfs(struct task_struct *p)
 	struct sched_entity *curr, *se = &p->se;
 	struct rq *rq = this_rq();
 
-	pr_info("%s: CPU%d, %d/%s",
-		__func__, smp_processor_id(), p->pid, p->comm);
+	mycfs_printk("parent:%d,child:%d", current->pid, p->pid);
 
 	raw_spin_lock(&rq->lock);
 	update_rq_clock(rq);
@@ -971,6 +970,9 @@ static void task_fork_mycfs(struct task_struct *p)
  */
 static void prio_changed_mycfs(struct rq *rq, struct task_struct *p, int oldprio)
 {
+	mycfs_printk("pid:%d,queued:%d,p->prio:%d,oldprio:%d",
+		p->pid, task_on_rq_queued(p), p->prio, oldprio);
+
 	if (!task_on_rq_queued(p))
 		return;
 
@@ -1022,6 +1024,9 @@ static void switched_from_mycfs(struct rq *rq, struct task_struct *p)
 	struct sched_entity *se = &p->se;
 	struct mycfs_rq *mycfs_rq = mycfs_rq_of(se);
 
+	mycfs_printk("pid:%d,normalized:%d",
+		p->pid, vruntime_normalized(p));
+
 	cpufreq_update_util(rq, 0);
 
 	if (!vruntime_normalized(p)) {
@@ -1042,6 +1047,9 @@ static void switched_to_mycfs(struct rq *rq, struct task_struct *p)
 {
 	struct sched_entity *se = &p->se;
 	struct mycfs_rq *mycfs_rq = mycfs_rq_of(se);
+
+	mycfs_printk("pid:%d,normalized:%d,queued:%d",
+		p->pid, vruntime_normalized(p), task_on_rq_queued(p));
 
 	/* Take a note about CPU utilization changes */
 	cpufreq_update_util(rq, 0);

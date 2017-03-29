@@ -1,1 +1,1 @@
-make bzImage && make install && sync
+make -j 8 bzImage && make install && sync
