@@ -18,7 +18,7 @@
  *
  */
 
-#define pr_fmt(fmt) "MYCFS: " fmt
+#define pr_fmt(fmt) "MyCFS: " fmt
 
 #include <linux/sched.h>
 #include <linux/latencytop.h>
@@ -41,8 +41,8 @@ static int mycfs_debug = 1;
 #define mycfs_printk(s, a...)					\
 do {								\
 	if (mycfs_debug) {					\
-		pr_info("CPU%2d %s: ",				\
-			smp_processor_id(), __func__);		\
+		pr_info("%s(CPU%d): ",				\
+			__func__, smp_processor_id());		\
 		pr_cont(s, ##a);				\
 	}							\
 } while (0)
@@ -432,10 +432,6 @@ static void update_min_vruntime(struct mycfs_rq *mycfs_rq)
 
 	/* ensure we never gain time by being placed backwards. */
 	mycfs_rq->min_vruntime = max_vruntime(mycfs_rq->min_vruntime, vruntime);
-
-	mycfs_printk("current: %d, mycfs->curr: %d, min_vruntime: %Lu",
-		current->pid, mycfs_rq->curr ? task_of(mycfs_rq->curr)->pid : -1,
-		mycfs_rq->min_vruntime);
 }
 
 /*
@@ -506,6 +502,10 @@ static void enqueue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se, i
 	if (!curr)
 		__enqueue_entity(mycfs_rq, se);
 	se->on_rq = 1;
+
+	mycfs_printk("pid:%d,state:%d,p->on_rq:%d,se->on_rq:%d,se->vrt:%Lu",
+		task_of(se)->pid, task_of(se)->state, task_of(se)->on_rq,
+		se->on_rq, se->vruntime);
 }
 
 /*
@@ -518,16 +518,9 @@ static void enqueue_task_mycfs(struct rq *rq, struct task_struct *p, int flags)
 	struct sched_entity *se = &p->se;
 	struct mycfs_rq *mycfs_rq = mycfs_rq_of(se);
 
-	WARN_ON_ONCE(se->on_rq);
-
-	mycfs_printk("pid:%d,se->vrt:%Lu,mycfs->vrt:%Lu (b)",
-		p->pid, se->vruntime, mycfs_rq->min_vruntime);
 	enqueue_entity(mycfs_rq, se, flags);
 	mycfs_rq->h_nr_running++;
 	add_nr_running(rq, 1);
-
-	mycfs_printk("pid:%d,se->vrt:%Lu,mycfs->vrt:%Lu (a)",
-		p->pid, se->vruntime, mycfs_rq->min_vruntime);
 }
 
 static void dequeue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se,
@@ -562,6 +555,10 @@ static void dequeue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se,
 	 */
 	if ((flags & (DEQUEUE_SAVE | DEQUEUE_MOVE)) == DEQUEUE_SAVE)
 		update_min_vruntime(mycfs_rq);
+
+	mycfs_printk("pid:%d,state:%d,p->on_rq:%d,se->on_rq:%d,se->vrt:%Lu",
+		task_of(se)->pid, task_of(se)->state, task_of(se)->on_rq,
+		se->on_rq, se->vruntime);
 }
 
 /*
@@ -577,9 +574,6 @@ static void dequeue_task_mycfs(struct rq *rq, struct task_struct *p, int flags)
 	dequeue_entity(mycfs_rq, se, flags);
 	mycfs_rq->h_nr_running--;
 	sub_nr_running(rq, 1);
-
-	mycfs_printk("pid:%d, mycfs_rq->vrt:%Lu",
-		p->pid, mycfs_rq->min_vruntime);
 }
 
 static unsigned long wakeup_gran(struct sched_entity *curr,
@@ -715,6 +709,9 @@ static inline void update_stats_curr_start(struct mycfs_rq *mycfs_rq,
 
 static void put_prev_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *prev)
 {
+	mycfs_printk("pid:%d,se->on_rq:%d",
+		task_of(prev)->pid, prev->on_rq);
+
 	if (prev->on_rq) {
 		/*
 		 * If still on the runqueue then deactivate_task()
@@ -726,9 +723,6 @@ static void put_prev_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *prev
 		__enqueue_entity(mycfs_rq, prev);
 	}
 	mycfs_rq->curr = NULL;
-
-	mycfs_printk("pid:%d,on_rq:%d,se->vrt:%Lu,mycfs_rq->vrt:%Lu",
-		task_of(prev)->pid, prev->on_rq, prev->vruntime, mycfs_rq->min_vruntime);
 }
 
 static void set_next_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
@@ -756,17 +750,14 @@ static struct task_struct *pick_next_task_mycfs(struct rq *rq,
 	if (!mycfs_rq->nr_running)
 		return NULL;
 
-	mycfs_printk("prev: %d, nr_running: %d",
-		prev->pid, mycfs_rq->nr_running);
-
 	put_prev_task(rq, prev);
 
 	se = pick_next_entity(mycfs_rq, NULL);
 	set_next_entity(mycfs_rq, se);
 	p = task_of(se);
 
-	mycfs_printk("p: %d, prev: %d, nr_running: %d",
-		p->pid, prev->pid, mycfs_rq->nr_running);
+	mycfs_printk("pid:%d,nr_running:%d",
+		p->pid, mycfs_rq->nr_running);
 
 	return p;
 }
@@ -887,8 +878,7 @@ static int select_task_rq_mycfs(struct task_struct *p, int prev_cpu,
  */
 static void task_dead_mycfs(struct task_struct *p)
 {
-	pr_info("%s: CPU%d, Deadpid: %d, Curpid: %d",
-		__func__, smp_processor_id(), p->pid, current->pid);
+	mycfs_printk("pid:%d,comm:%s", p->pid, p->comm);
 }
 #endif /* CONFIG_SMP */
 
@@ -906,6 +896,8 @@ static void set_curr_task_mycfs(struct rq *rq)
 	se = &rq->curr->se;
 	mycfs_rq = mycfs_rq_of(se);
 	set_next_entity(mycfs_rq, se);
+
+	mycfs_printk("pid:%d", task_of(se)->pid);
 }
 
 /**
@@ -914,11 +906,8 @@ static void set_curr_task_mycfs(struct rq *rq)
  */
 static void task_tick_mycfs(struct rq *rq, struct task_struct *curr, int queued)
 {
-	struct mycfs_rq *mycfs_rq;
-	struct sched_entity *se;
-
-	se = &curr->se;
-	mycfs_rq = mycfs_rq_of(se);
+	struct sched_entity *se = &curr->se;
+	struct mycfs_rq *mycfs_rq = mycfs_rq_of(se);
 
 	/* Update run-time statistics of the 'current' */
 	update_curr(mycfs_rq);
@@ -938,8 +927,7 @@ static void task_fork_mycfs(struct task_struct *p)
 	struct sched_entity *curr, *se = &p->se;
 	struct rq *rq = this_rq();
 
-	pr_info("%s: CPU%d, %d/%s",
-		__func__, smp_processor_id(), p->pid, p->comm);
+	mycfs_printk("parent:%d,child:%d", current->pid, p->pid);
 
 	raw_spin_lock(&rq->lock);
 	update_rq_clock(rq);
@@ -1086,10 +1074,11 @@ const struct sched_class mycfs_sched_class = {
 	/* task migration callback: */
 	.select_task_rq		= select_task_rq_mycfs,
 
-	/* task exit point callback: */
-	.task_dead		= task_dead_mycfs,
 	.set_cpus_allowed	= set_cpus_allowed_common,
 #endif
+
+	/* task exit point callback: */
+	.task_dead		= task_dead_mycfs,
 
 	.set_curr_task          = set_curr_task_mycfs,
 
@@ -1116,7 +1105,6 @@ const struct sched_class mycfs_sched_class = {
 void init_mycfs_rq(struct mycfs_rq *mycfs_rq)
 {
 	mycfs_rq->tasks_timeline = RB_ROOT;
-	mycfs_rq->min_vruntime = (u64)(-(1LL << 20));
 	mycfs_rq->min_vruntime = 0;
 }
 

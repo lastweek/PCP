@@ -2413,6 +2413,8 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	} else if (rt_prio(p->prio)) {
 		p->sched_class = &rt_sched_class;
 	} else if (mycfs_policy(p->policy)) {
+		pr_info("%s(CPU%d): pid:%d is going to use mycfs, cur:%d",
+			__func__, smp_processor_id(), p->pid, current->pid);
 		p->sched_class = &mycfs_sched_class;
 	} else {
 		p->sched_class = &fair_sched_class;
@@ -2789,11 +2791,6 @@ static struct rq *finish_task_switch(struct task_struct *prev)
 		put_task_stack(prev);
 
 		put_task_struct(prev);
-	}
-
-	if (task_has_mycfs_policy(prev)) {
-		pr_info("%s(%d): current: %d, prev: %d(state: %d, on_rq: %d)\n",
-			__func__, smp_processor_id(), current->pid, prev->pid, prev->state, prev->on_rq);
 	}
 
 	tick_nohz_task_switch();
@@ -3288,17 +3285,13 @@ pick_next_task(struct rq *rq, struct task_struct *prev, struct pin_cookie cookie
 
 again:
 	for_each_class(class) {
-		if (task_has_mycfs_policy(prev))
-			pr_info("%s(%d)1 pid: %d, class: %pF", __func__, smp_processor_id(), prev->pid, class);
 		p = class->pick_next_task(rq, prev, cookie);
 		if (task_has_mycfs_policy(prev)) {
-			pr_info("%s(%d)2 pid: %d, class: %pF", __func__, smp_processor_id(), prev->pid, class);
-			if (p && p != RETRY_TASK)
-				pr_info("    next-pid: %d\n", p->pid);
-			else if (p == RETRY_TASK)
-				pr_info("    retry");
-			else
-				pr_info("    null");
+			pr_info("%s(CPU%d) pid: %d, class: %pF", __func__, smp_processor_id(), prev->pid, class);
+			if (p && p!=RETRY_TASK)
+				pr_info("   next: %d", p->pid);
+			else if (!p)
+				pr_info("   null");
 		}
 		if (p) {
 			if (unlikely(p == RETRY_TASK))
@@ -4006,8 +3999,8 @@ static void __setscheduler(struct rq *rq, struct task_struct *p,
 		p->sched_class = &rt_sched_class;
 	else if (mycfs_policy(attr->sched_policy)) {
 		p->sched_class = &mycfs_sched_class;
-		pr_info("sched: cpu%d-%d/%s (tgid: %d) change to MyCFS",
-			smp_processor_id(), p->pid, p->comm, p->tgid);
+		pr_info("%s(CPU%d): %d/%s change to MyCFS",
+			__func__, smp_processor_id(), p->pid, p->comm);
 	} else
 		p->sched_class = &fair_sched_class;
 }
@@ -4217,8 +4210,6 @@ recheck:
 	 * but store a possible modification of reset_on_fork.
 	 */
 	if (unlikely(policy == p->policy)) {
-		if (mycfs_policy(policy) && attr->sched_nice != task_nice(p))
-			goto change;
 		if (fair_policy(policy) && attr->sched_nice != task_nice(p))
 			goto change;
 		if (rt_policy(policy) && attr->sched_priority != p->rt_priority)
@@ -4500,11 +4491,13 @@ err_size:
 SYSCALL_DEFINE3(sched_setscheduler, pid_t, pid, int, policy,
 		struct sched_param __user *, param)
 {
+	int ret;
 	/* negative values for policy are not valid */
 	if (policy < 0)
 		return -EINVAL;
 
-	return do_sched_setscheduler(pid, policy, param);
+	ret = do_sched_setscheduler(pid, policy, param);
+	return ret;
 }
 
 /**
