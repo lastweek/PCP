@@ -18,6 +18,8 @@
  *
  */
 
+#define pr_fmt(fmt) "MYCFS: " fmt
+
 #include <linux/sched.h>
 #include <linux/latencytop.h>
 #include <linux/cpumask.h>
@@ -33,6 +35,17 @@
 #include <trace/events/sched.h>
 
 #include "sched.h"
+
+static int mycfs_debug = 1;
+
+#define mycfs_printk(s, a...)					\
+do {								\
+	if (mycfs_debug) {					\
+		pr_info("CPU%2d %s: ",				\
+			smp_processor_id(), __func__);		\
+		pr_cont(s, ##a);				\
+	}							\
+} while (0)
 
 static inline struct task_struct *task_of(struct sched_entity *se)
 {
@@ -318,9 +331,6 @@ static void __enqueue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
 	struct sched_entity *entry;
 	int leftmost = 1;
 
-	pr_info("%s: CPU%d, pid: %d, vruntime: %Lu\n",
-		__func__, smp_processor_id(), task_of(se)->pid, se->vruntime);
-
 	/* Find the right place in the rbtree: */
 	while (*link) {
 		parent = *link;
@@ -422,6 +432,10 @@ static void update_min_vruntime(struct mycfs_rq *mycfs_rq)
 
 	/* ensure we never gain time by being placed backwards. */
 	mycfs_rq->min_vruntime = max_vruntime(mycfs_rq->min_vruntime, vruntime);
+
+	mycfs_printk("current: %d, mycfs->curr: %d, min_vruntime: %Lu",
+		current->pid, mycfs_rq->curr ? task_of(mycfs_rq->curr)->pid : -1,
+		mycfs_rq->min_vruntime);
 }
 
 /*
@@ -506,12 +520,14 @@ static void enqueue_task_mycfs(struct rq *rq, struct task_struct *p, int flags)
 
 	WARN_ON_ONCE(se->on_rq);
 
+	mycfs_printk("pid:%d,se->vrt:%Lu,mycfs->vrt:%Lu (b)",
+		p->pid, se->vruntime, mycfs_rq->min_vruntime);
 	enqueue_entity(mycfs_rq, se, flags);
 	mycfs_rq->h_nr_running++;
 	add_nr_running(rq, 1);
 
-	pr_info("%s: CPU%d, pid: %d, se->vruntime=%Lu\n",
-		__func__, smp_processor_id(), p->pid, se->vruntime);
+	mycfs_printk("pid:%d,se->vrt:%Lu,mycfs->vrt:%Lu (a)",
+		p->pid, se->vruntime, mycfs_rq->min_vruntime);
 }
 
 static void dequeue_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se,
@@ -562,8 +578,8 @@ static void dequeue_task_mycfs(struct rq *rq, struct task_struct *p, int flags)
 	mycfs_rq->h_nr_running--;
 	sub_nr_running(rq, 1);
 
-	pr_info("%s: CPU%d, pid: %d, se->vruntime=%Lu\n",
-		__func__, smp_processor_id(), p->pid, se->vruntime);
+	mycfs_printk("pid:%d, mycfs_rq->vrt:%Lu",
+		p->pid, mycfs_rq->min_vruntime);
 }
 
 static unsigned long wakeup_gran(struct sched_entity *curr,
@@ -710,7 +726,9 @@ static void put_prev_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *prev
 		__enqueue_entity(mycfs_rq, prev);
 	}
 	mycfs_rq->curr = NULL;
-	pr_info("%s: CPU%d, pid: %d exit", __func__, smp_processor_id(), current->pid);
+
+	mycfs_printk("pid:%d,on_rq:%d,se->vrt:%Lu,mycfs_rq->vrt:%Lu",
+		task_of(prev)->pid, prev->on_rq, prev->vruntime, mycfs_rq->min_vruntime);
 }
 
 static void set_next_entity(struct mycfs_rq *mycfs_rq, struct sched_entity *se)
@@ -738,14 +756,17 @@ static struct task_struct *pick_next_task_mycfs(struct rq *rq,
 	if (!mycfs_rq->nr_running)
 		return NULL;
 
+	mycfs_printk("prev: %d, nr_running: %d",
+		prev->pid, mycfs_rq->nr_running);
+
 	put_prev_task(rq, prev);
 
 	se = pick_next_entity(mycfs_rq, NULL);
-	if (WARN_ON_ONCE(!se))
-		return NULL;
 	set_next_entity(mycfs_rq, se);
-
 	p = task_of(se);
+
+	mycfs_printk("p: %d, prev: %d, nr_running: %d",
+		p->pid, prev->pid, mycfs_rq->nr_running);
 
 	return p;
 }
@@ -804,9 +825,26 @@ static bool yield_to_task_mycfs(struct rq *rq, struct task_struct *p, bool preem
 static void check_preempt_wakeup_mycfs(struct rq *rq, struct task_struct *p,
 				       int wake_flags)
 {
+	struct task_struct *curr = rq->curr;
+	struct sched_entity *se = &curr->se, *pse = &p->se;
+
+	if (unlikely(se == pse))
+		return;
+
 	/*
-	 * Just do nothing, we do not want any preemption here
+	 * We can come here with TIF_NEED_RESCHED already set from new task
+	 * wake up path.
 	 */
+	if (test_tsk_need_resched(curr))
+		return;
+
+	update_curr(mycfs_rq_of(se));
+
+	if (wakeup_preempt_entity(se, pse) == 1) {
+		mycfs_printk("pid: %d preempt current: %d",
+			p->pid, curr->pid);
+		resched_curr(rq);
+	}
 }
 
 /*
@@ -843,41 +881,14 @@ static int select_task_rq_mycfs(struct task_struct *p, int prev_cpu,
 }
 
 /*
- * Called immediately before a task is migrated to a new cpu; task_cpu(p) and
- * mycfs_rq_of(p) references at time of call are still valid and identify the
- * previous cpu. The caller guarantees p->pi_lock or task_rq(p)->lock is held.
- */
-static void migrate_task_rq_mycfs(struct task_struct *p)
-{
-	/*
-	 * As blocked tasks retain absolute vruntime the migration needs to
-	 * deal with this by subtracting the old and adding the new
-	 * min_vruntime -- the latter is done by enqueue_entity() when placing
-	 * the task on the new runqueue.
-	 */
-	if (p->state == TASK_WAKING) {
-		struct sched_entity *se = &p->se;
-		struct mycfs_rq *mycfs_rq = mycfs_rq_of(se);
-		u64 min_vruntime;
-
-		min_vruntime = mycfs_rq->min_vruntime;
-		se->vruntime -= min_vruntime;
-	}
-
-	/* Tell new CPU we are migrated */
-	p->se.avg.last_update_time = 0;
-
-	/* We have migrated, no longer consider this task hot */
-	p->se.exec_start = 0;
-}
-
-/*
  * task_dead_mycfs
  * Callback from finish_task_switch, after a task set its state to TASK_DEAD,
  * which happens after a task do_exit():
  */
 static void task_dead_mycfs(struct task_struct *p)
 {
+	pr_info("%s: CPU%d, Deadpid: %d, Curpid: %d",
+		__func__, smp_processor_id(), p->pid, current->pid);
 }
 #endif /* CONFIG_SMP */
 
@@ -897,7 +908,7 @@ static void set_curr_task_mycfs(struct rq *rq)
 	set_next_entity(mycfs_rq, se);
 }
 
-/*
+/**
  * task_tick_mycfs
  * scheduler tick hitting a task of our scheduling class:
  */
@@ -1074,7 +1085,6 @@ const struct sched_class mycfs_sched_class = {
 #ifdef CONFIG_SMP
 	/* task migration callback: */
 	.select_task_rq		= select_task_rq_mycfs,
-	.migrate_task_rq	= migrate_task_rq_mycfs,
 
 	/* task exit point callback: */
 	.task_dead		= task_dead_mycfs,
