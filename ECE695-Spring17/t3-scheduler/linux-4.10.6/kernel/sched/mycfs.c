@@ -1140,9 +1140,6 @@ void init_mycfs_rq(struct mycfs_rq *mycfs_rq)
 
 static int do_sched_setlimit(struct task_struct *p, u64 limit)
 {
-	pr_info("%s(CPU%d): %d/%s, limit: %Lu",
-		__func__, smp_processor_id(), p->pid, p->comm, limit);
-
 	p->se.mycfs_limit = limit;
 
 	return 0;
@@ -1153,12 +1150,16 @@ SYSCALL_DEFINE2(sched_setlimit, pid_t, pid, int, limit)
 	struct task_struct *p;
 	int ret;
 
-	if (pid < 0 || limit < 0 || limit >= (MYCFS_PREIOD/NSEC_PER_MSEC))
+	if (pid < 0 || limit < 0 || limit >= (MYCFS_PREIOD/1000))
 		return -EINVAL;
 
 	ret = -ESRCH;
 	p = pid ? find_task_by_vpid(pid) : current;
-	if (p)
-		ret = do_sched_setlimit(p, limit * NSEC_PER_MSEC);
+	if (p) {
+		pr_info("%s(CPU%d): %d/%s, limit: %Lu",
+			__func__, smp_processor_id(), p->pid, p->comm, limit*1000);
+
+		ret = do_sched_setlimit(p, limit * 1000);
+	}
 	return ret;
 }
