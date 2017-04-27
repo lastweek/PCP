@@ -277,6 +277,146 @@ static int is_stack(struct proc_maps_private *priv,
 		vma->vm_end >= vma->vm_mm->start_stack;
 }
 
+static bool show_vma_page_map_enabled = false;
+
+#define PGS_PER_SET	8
+#define SET_PER_LINE	4
+static int pg_set_index;
+static int set_index;
+
+static void print_ref_one(struct seq_file *m, unsigned int ref)
+{
+	if (pg_set_index == PGS_PER_SET) {
+		pg_set_index = 0;
+		set_index++;
+		if (set_index == SET_PER_LINE) {
+			set_index = 0;
+			seq_printf(m, "\n");
+		} else {
+			seq_printf(m, " ");
+		}
+	}
+	pg_set_index++;
+
+	if (ref == 0)
+		seq_printf(m, ".");
+	else if (ref < 10)
+		seq_printf(m, "%d", ref);
+	else
+		seq_printf(m, "x");
+}
+
+static void print_ref_batch_zero(struct seq_file *m, unsigned int nr_pages)
+{
+	int i;
+
+	for (i = 0; i < nr_pages; i++)
+		print_ref_one(m, 0);
+}
+
+static int show_vma_pte_map(struct seq_file *m, struct vm_area_struct *vma,
+			    unsigned long addr, unsigned long end, pmd_t *pmd)
+{
+	pte_t *pte;
+
+	pte = pte_offset_kernel(pmd, addr);
+	do {
+		/*
+		 * Only valid and accessed PTE
+		 * counts a ref 1.
+		 */
+		if (!pte_none(*pte) && pte_young(*pte))
+			print_ref_one(m, 1);
+		else
+			print_ref_one(m, 0);
+	} while (pte++, addr += PAGE_SIZE, addr != end);
+
+	return 0;
+}
+
+static int show_vma_pmd_map(struct seq_file *m, struct vm_area_struct *vma,
+			    unsigned long addr, unsigned long end, pud_t *pud)
+{
+	pmd_t *pmd;
+	int ret;
+	unsigned long next;
+
+	pmd = pmd_offset(pud, addr);
+	do {
+		next = pmd_addr_end(addr, end);
+
+		if (pmd_trans_huge(*pmd)) {
+			seq_printf(m, "\n[trans_huge_pmd]\n");
+			print_ref_batch_zero(m, PMD_SIZE/PAGE_SIZE);
+			continue;
+		}
+
+		if (pmd_none_or_clear_bad(pmd)) {
+			print_ref_batch_zero(m, PMD_SIZE/PAGE_SIZE);
+			continue;
+		}
+
+		ret = show_vma_pte_map(m, vma, addr, next, pmd);
+		if (ret)
+			return ret;
+	} while (pmd++, addr = next, addr != end);
+
+	return 0;
+}
+
+static int show_vma_pud_map(struct seq_file *m, struct vm_area_struct *vma,
+			    unsigned long addr, unsigned long end, pgd_t *pgd)
+{
+	pud_t *pud;
+	int ret;
+	unsigned long next;
+
+	pud = pud_offset(pgd, addr);
+	do {
+		next = pud_addr_end(addr, end);
+
+		if (pud_none_or_clear_bad(pud)) {
+			print_ref_batch_zero(m, PUD_SIZE/PAGE_SIZE);
+			continue;
+		}
+
+		ret = show_vma_pmd_map(m, vma, addr, next, pud);
+		if (ret)
+			return ret;
+	} while (pud++, addr = next, addr != end);
+
+	return 0;
+}
+
+static void show_vma_page_map(struct seq_file *m, struct vm_area_struct *vma,
+			      unsigned long addr, unsigned long end)
+{
+	pgd_t *pgd;
+	int ret;
+	unsigned long next;
+
+	if (unlikely(!vma || !vma->vm_mm)) {
+		seq_printf(m, "  vma=%p, vma->vm_mm=%p", vma, vma->vm_mm);
+		return;
+	}
+
+	seq_printf(m, "  nr_pages=%lu\n", (end - addr) / PAGE_SIZE);
+
+	pgd = pgd_offset(vma->vm_mm, addr);
+	do {
+		next = pgd_addr_end(addr, end);
+
+		if (pgd_none_or_clear_bad(pgd)) {
+			print_ref_batch_zero(m, PGDIR_SIZE/PAGE_SIZE);
+			continue;
+		}
+
+		ret = show_vma_pud_map(m, vma, addr, next, pgd);
+		if (ret)
+			break;
+	} while (pgd++, addr = next, addr != end);
+}
+
 static void
 show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 {
@@ -355,6 +495,13 @@ done:
 		seq_puts(m, name);
 	}
 	seq_putc(m, '\n');
+
+	if (show_vma_page_map_enabled) {
+		pg_set_index = 0;
+		set_index = 0;
+		show_vma_page_map(m, vma, vma->vm_start, vma->vm_end);
+		seq_printf(m, "\n");
+	}
 }
 
 static int show_map(struct seq_file *m, void *v, int is_pid)
@@ -393,6 +540,29 @@ static int pid_maps_open(struct inode *inode, struct file *file)
 	return do_maps_open(inode, file, &proc_pid_maps_op);
 }
 
+static ssize_t pid_maps_write(struct file *file, const char __user *buf,
+			      size_t count, loff_t *offs)
+{
+	char *options;
+
+	options = kzalloc(count, GFP_KERNEL);
+	if (!options)
+		return -ENOMEM;
+
+	if (copy_from_user(options, buf, count)) {
+		kfree(options);
+		return -EFAULT;
+	}
+
+	if (options[0] == 'y')
+		show_vma_page_map_enabled = true; 
+	else if (options[0] == 'n')
+		show_vma_page_map_enabled = false;
+
+	kfree(options);
+	return count;
+}
+
 static int tid_maps_open(struct inode *inode, struct file *file)
 {
 	return do_maps_open(inode, file, &proc_tid_maps_op);
@@ -401,6 +571,7 @@ static int tid_maps_open(struct inode *inode, struct file *file)
 const struct file_operations proc_pid_maps_operations = {
 	.open		= pid_maps_open,
 	.read		= seq_read,
+	.write		= pid_maps_write,
 	.llseek		= seq_lseek,
 	.release	= proc_map_release,
 };
