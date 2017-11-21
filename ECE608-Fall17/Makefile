@@ -1,4 +1,4 @@
-CFLAGS := -O2
+CFLAGS := -O2 -g
 
 SRCS := $(wildcard *.c)
 OBJS := $(SRCS:.c=.o)
