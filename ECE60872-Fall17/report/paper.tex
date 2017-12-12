@@ -1,0 +1,73 @@
+\documentclass[sigconf]{acmart}
+\settopmatter{printacmref=false} % Removes citation information below abstract
+\renewcommand\footnotetextcopyrightpermission[1]{} % removes footnote with conference information in first column
+\pagestyle{plain} % removes running headers
+
+\usepackage{booktabs}
+\usepackage{setspace}
+\usepackage{listings}
+\usepackage{courier}
+\usepackage{enumitem}
+\usepackage{multirow}
+\usepackage{color}
+\usepackage{xcolor}
+\usepackage{totpages}
+
+  \let\oldthebibliography=\thebibliography
+  \let\endoldthebibliography=\endthebibliography
+  \renewenvironment{thebibliography}[1]{%
+    \begin{oldthebibliography}{#1}%
+      \setlength{\parskip}{0ex}%
+      \setlength{\itemsep}{0ex}%
+  }%
+  {%
+    \end{oldthebibliography}%
+  }
+
+
+\sloppy
+\input{defs}
+\input{macros}
+\input{remark}
+\remarktrue
+\newcommand{\shortenum}{\vspace*{-0.1in}}
+\newcommand{\sparagraph}[1]{\vspace*{0.0in}\paragraph{#1}}
+
+\begin{document}
+
+%
+% Title and Authors List
+%
+\title{Edge Computing}
+
+\author{Junjie Wang}
+\affiliation{%
+  \institution{Purdue University}
+}
+\email{wang1764@purdue.edu}
+\author{Zhengzhe Zhu}
+\affiliation{%
+  \institution{Purdue University}
+}
+\email{zhu714@purdue.edu}
+\author{Yizhou Shan}
+\affiliation{%
+  \institution{Purdue University}
+}
+\email{ys@purdue.edu}
+
+% The default list of authors is too long for headers}
+\renewcommand{\shortauthors}{J. Wang et al.}
+
+\input{abstract}
+
+%
+% Paper Main Body
+%
+\maketitle
+\input{introduction}
+
+\bibliographystyle{abbrv}
+\bibliography{all-defs,all,personal,all-confs,local,paper}
+
+\end{document}
