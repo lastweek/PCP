@@ -26,7 +26,7 @@
 #define BUG_ON(condition)	assert(!(condition))
 
 /* Maximum weight of an edge */
-unsigned long default_max_weight = 100;
+unsigned long default_max_weight = 1000;
 
 struct vertex;
 
@@ -155,25 +155,31 @@ static inline void relax(struct edge *edge)
  */
 static void bellman_ford(struct graph *graph, unsigned long src_vertex)
 {
-	unsigned long i, j;
+	unsigned long i, j, base, index;
 	struct edge *edge;
 	struct timeval start, end, diff;
+	unsigned long nr_vertices = graph->nr_vertices;
+	unsigned long nr_edges = graph->nr_edges;
 
 	reset_graph(graph, src_vertex);
 
+	base = rand() % nr_edges;
+
 	gettimeofday(&start, NULL);
-	for (i = 0; i < graph->nr_vertices; i++) {
-		for (j = 0; j < graph->nr_edges; j++) {
-			edge = &graph->edges[j];
+	for (i = 0; i < nr_vertices; i++) {
+		for (j = 0; j < nr_edges; j++) {
+			index = base % nr_edges;
+			base++;
+			edge = &graph->edges[index];
 			relax(edge);
 		}
 	}
 	gettimeofday(&end, NULL);
 
 	timeval_sub(&diff, &end, &start);
-	printf("%s(): (nr_vertices: %lu, nr_edges: %lu, density: %lf), runtime: %lu.%lu s\n",
+	printf("%s(): (nr_vertices: %lu, nr_edges: %lu, density: %lf), runtime: %ld.%06ld s\n",
 		__func__, graph->nr_vertices, graph->nr_edges, graph->density,
-		diff.tv_sec, diff.tv_usec / 1000);
+		diff.tv_sec, diff.tv_usec);
 }
 
 /*
@@ -235,9 +241,9 @@ static void dijkstra_array(struct graph *graph, unsigned long src_vertex)
 	gettimeofday(&end, NULL);
 
 	timeval_sub(&diff, &end, &start);
-	printf("%s(): (nr_vertices: %lu, nr_edges: %lu, density: %lf), runtime: %lu.%lu s\n",
+	printf("%s(): (nr_vertices: %lu, nr_edges: %lu, density: %lf), runtime: %ld.%06ld s\n",
 		__func__, graph->nr_vertices, graph->nr_edges, graph->density,
-		diff.tv_sec, diff.tv_usec / 1000);
+		diff.tv_sec, diff.tv_usec);
 }
 
 /* O(N) linear search */
@@ -447,10 +453,10 @@ int main(void)
 	struct graph *graph;
 	unsigned long src_vertex;
 
-	graph = init_random_graph(1000, 0.9);
+	graph = init_random_graph(64, 0.01);
 	BUG_ON(!graph);
 
-	src_vertex = 1;
+	src_vertex = 5;
 	dijkstra_array(graph, src_vertex);
 	//dump_graph_vertics(graph);
 
