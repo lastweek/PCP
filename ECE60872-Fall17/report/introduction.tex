@@ -1,4 +1,4 @@
-\section{Motivation}
+\section{Introduction}
 The traditional cloud computing infrastructure has a two-level
 architecture: centralized cloud platform and end-user mobile devices.
 Normally, compute-intensive capabilities such as speech recognition,
@@ -18,33 +18,40 @@ Edge computing~\cite{url:openedgecomputing,edge-computing} is a new paradigm in 
 resources are pushed to the edge of Internet. Edge computing offers
 lower latency and a reduction in data traffic through cloud services.
 The edge computing introduces another layer into this architecture, and it acts as the
-middle layer of the new 3-tier hierarchy: mobile devices, edge devices,
-and cloud servers.
+middle layer of the new three-tier hierarchy: mobile, edge devices, and cloud.
 
-However, decentralized edge devices also introduced many issues.
+However, decentralized edge devices have some intrinsic issues.
 For example, normally edge devices are not maintained as well
 as centralized data center servers. To make it worse, edge devices
 may be exposed to public areas, which increases the probability
-of device failure. In all, the possible low reliability of edge
-devices will have implications in the 3-tier hierarchy.
+of edge device failures. Edge computing based system must take this
+into account: it must maximize the benefit provided by edge computing while
+minimize the impact of various failures.
 
-To confront these challenges, in this work I want to explore
-how edge device failures can impact the framework performance,
-and how to mask those failures by making edge computing more resilient,
-such that applications using this framework will have the lowest performance decrease.
-
-\section{Resilient Edge Computing}
+To confront these challenges, we propose {\em resilient edge computing}, a robust framwork that provides
+low-latency, high-availability and high-reliability computation.
 Resiliency~\cite{Resiliency-survey} is defined as the capacity of
 a system or an infrastructure to remain reliable, failure tolerant, and dependable
 in case of any failures that result in a temporal or permanent service disruption.
-Resiliency in cloud computing can classified into two major groups: 1) resiliency in
-infrastructure and (2) resiliency in applications. In this work, I will only focus
-on resiliency in applications.
+Resiliency in cloud computing can classified into two major groups: resiliency of
+infrastructure, and resiliency of applications. In this work, we mainly focus
+on resiliency of applications. Because the main goal of edge computing is to improve
+the usability of mobile applications.
 
-Resilient edge computing means that 3-tier hierarchy can sustain any failures, and
-provide reliability, availability guarantees for both applications and end users
-regardless any failures in any edge devices.
+To have a better understanding of resilient edge computing, we fisrt use EdgeCloudSim~\cite{edgecloudsim},
+an edge computing simulator based on CloudSim~\cite{cloudsim},
+to evaluate the basic performance improvement provided by edge computing and how edge device failures can impact
+the framework performance. We then implement an image processing application which is
+deployed in all three tiers. We show that real-world applications can benefit from edge computing
+despite failures. We also propose and evaluate some runtime strategies to handle different
+failure scenarios in edge computing.
 
+The rest of the paper is organized as follows. Section 2 presents the background about
+edge computing. Section 3 presents our simulation results. We discuss the design
+and implementation details of our image-processing application in section 4. Section 5 gives a detailed
+evaluation of this application. We cover related work in section 6 and conclue in section 7.
+
+\if 0
 In this work, I assume the following possible failure models and different combinations
 of them:
 \begin{enumerate}
@@ -62,28 +69,4 @@ Otherwise, there is no way to recover.
 
 Despite all these failures in the system, the goal of resilient edge computing
 is that any applications that are using edge computing service can continue
-running, with slight decreased performance.
-
-\section{Plan}
-In the first stage of this project, I plan to use cloud simulator CloudSim~\cite{cloudsim}
-to simulate both cloud servers and edge components (or cloudlet). CloudSim
-is able to simulate both device crash and network failure, which satifies my
-failure models. As for the applications, I found several interesting ones from ~\cite{quantify-edge}.
-For example, there is a face recognition application FACE and an augmented reality application MAR.
-I will choose to port one application first.
-
-Combined together, the goal of my first stage is to: 1) able to run ported applications
-on CloudSim without any injected faults, 2) able to handle injected faults as mentioned
-above without hurting running applications. To handle the injected faults, I will design
-policies at all three ends and implement mechanisms to detect and recover.
-
-In the next stage, I will run on real cloud servers and edge devices (e.g., tablet or desktop).
-By manually shutdown machines or cut out network, I will be able to verify the correctness
-of my policy and mechanism designed for the system. Along building the system, I will read
-more on edge computing side and find more possible optimization possibilities for edge computing.
-
-\section{Previous Work}
-Hu et.al~\cite{quantify-edge} has evaluated the impact of edge computing on mobile applications.
-Ha et.al~\cite{Ha2015OpenStackFC} developed OpenStack++ as an extension to OpenStack framwork,
-for cloudlet development. ~\cite{edge-computing} suggested that edge devices can be used
-to mask cloud outages. However, how edge devices failure can be handled properly is not well studied.
+\fi

@@ -13,17 +13,16 @@
 \usepackage{xcolor}
 \usepackage{totpages}
 
-  \let\oldthebibliography=\thebibliography
-  \let\endoldthebibliography=\endthebibliography
-  \renewenvironment{thebibliography}[1]{%
-    \begin{oldthebibliography}{#1}%
-      \setlength{\parskip}{0ex}%
-      \setlength{\itemsep}{0ex}%
-  }%
-  {%
-    \end{oldthebibliography}%
-  }
-
+\let\oldthebibliography=\thebibliography
+\let\endoldthebibliography=\endthebibliography
+\renewenvironment{thebibliography}[1]{
+  \begin{oldthebibliography}{#1}
+    \setlength{\parskip}{0ex}
+    \setlength{\itemsep}{0ex}
+}
+{
+  \end{oldthebibliography}
+}
 
 \sloppy
 \input{defs}
@@ -38,7 +37,7 @@
 %
 % Title and Authors List
 %
-\title{Edge Computing}
+\title{Resilient Edge Computing}
 
 \author{Junjie Wang}
 \affiliation{%
@@ -66,6 +65,12 @@
 %
 \maketitle
 \input{introduction}
+\input{background}
+\input{simulation}
+\input{application}
+\input{evaluation}
+\input{related}
+\input{conclusion}
 
 \bibliographystyle{abbrv}
 \bibliography{all-defs,all,personal,all-confs,local,paper}

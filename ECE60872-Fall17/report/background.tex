@@ -1,0 +1,28 @@
+\section{Background}
+\label{sec:background}
+
+In this section, we present background on edge computing and the simulator
+we used in our later evaluation.
+
+\subsection{Edge Computing}
+Cloud computing and mobile computing are now used everywhere.
+After several decades of sustained effort by many researchers, both of them have
+solid core concepts, techniques and mechanisms. Many applications running on mobile devices nowadays
+leverage cloud computing to overcome the resource limits of mobile devices. However,
+WAN delays in the critical path of user interaction can hurt the application
+performance and responsiveness~\cite{cloudlets09}.
+
+Edge computing is a new computing paradigm which moves the computation closer to the mobile devices.
+The reousrce in the proximity used in edge computing can be a network resource or a computational resource
+in between mobile devices and the cloud. Satyanarayanan et al.~\cite{cloudlets09} introduced the concept
+of cloudlet, which is a trusted, resource-rich computer or cluster of computers that's well-connected to
+the Internet and available for use by nearby mobile devices. Cloudlet has been extensively discussed in the
+literatures~\cite{edge-computing, Cloudlets12,hu-apsys16,ChaufournierSLN17}.
+
+An edge computing infrastructure can be composed of many edge servers and management system softwares.
+The management system needs to decide where to offload a task, and how to ensure reliability and availability
+in case of failures. Recent work \cite{hu-apsys16,COMET} show that application partition schema, and network latency
+both have significant impacts on edge computing performance.
+
+\subsection{EdgeCloudSim}
+TODO
