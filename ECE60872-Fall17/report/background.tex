@@ -1,8 +1,8 @@
 \section{Background}
 \label{sec:background}
 
-In this section, we present background on edge computing, its usage models and failure models.
-We also present the simulator used in our later evaluation.
+In this section, we present background on edge computing, its computing models and failure models.
+We also present EdgeCloudSim, the simulator used in our later simulation.
 
 \subsection{Edge Computing}
 Cloud computing and mobile computing are now used everywhere.
@@ -25,8 +25,10 @@ in case of failures. Recent work \cite{hu-apsys16,COMET} show that application p
 both have significant impacts on edge computing performance.
 
 \input{fig-computing-models}
+\input{fig-edgecloudsim}
+
 \subsection{Computing Models}
-\label{sec:usage-models}
+\label{sec:computing-models}
 Edge computing offers more possibilities for current mobile-cloud computing architecture.
 Figure~\ref{fig-computing-models} presents four computing models. Type 4 is the original
 two-tier architecture, where mobile devices communicate with cloud only. With the introduction of
@@ -70,8 +72,9 @@ CloudSim is mainly designed for evaluating the performance of the data centers, 
 properties to model edge devices and mobile devices. To be able to simulate edge computing, EdgeCloudSim
 extends CloudSim by adding the following features: (i) a queueing model to represent the delay in WLAM and WAN,
 (ii) a mobility model, and (iii) a new CPU utilization model for VMs~\cite{edgecloudsim}.
+Figure~\ref{fig-edgecloudsim} shows its layered architecture.
 
 EdgeCloudSim provides three different architectures: single-tier, two-tier and two-tier with load-balancing.
 They map to type 1, type 2 and type 3 as illustrated in Figure~\ref{fig-computing-models} respectively.
 EdgeCloudSim is also able to limit network bandwidth, simulate mobility of mobile devices.
-We will have a detailed evaluation under different settings in section 3.
+Detailed evaluation under different settings is presented in section 3.
