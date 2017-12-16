@@ -4,12 +4,12 @@
 #endif
 
 #proc areadef
-   rectangle: 1 1 11 6
+   rectangle: 1 1 10 8
    xrange: 1 5
-   yrange: 1 4
+   yrange: 0 4
 
 #proc xaxis
-   label: Number of Mobile Devices (WAN=40Mpbs)
+   label: Number of Images
    labeldistance: 1.0
    selflocatingstubs: text
       1        100
@@ -19,13 +19,13 @@
       5        500
      
 #proc yaxis
-   label: Service Time (sec)
+   label: Response Time (sec)
    labeldistance: 1.0
    stubs: inc 0.5
 
 #proc getdata
-file: ../Data/data_simulation-wan.tab
-fieldnames: loc T1 T2 T3
+file: ../Data/data_app.tab
+fieldnames: loc T1 T2 T3 T4
 
 #proc lineplot
     xfield: loc
@@ -49,12 +49,21 @@ fieldnames: loc T1 T2 T3
     legendlabel: T3
     legendsampletype: line+symbol
 
+#proc lineplot
+    xfield: loc
+    yfield: T4
+    linedetails: color=black width=3 style=0 dashscale=7
+    pointsymbol: shape=diamond color=black radius=0.1 style=filled
+    legendlabel: T4
+    legendsampletype: line+symbol
+
 #proc legend
   format: down
   textdetails: size=20
-  location: min+2.0 min+5
+  location: min+2.0 min+7
   seglen: 1.0
   noclear: yes
   specifyorder: T1
   		T2
 		T3
+		T4

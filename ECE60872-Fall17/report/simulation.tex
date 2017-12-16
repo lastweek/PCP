@@ -1,6 +1,8 @@
 \section{Simulation}
 \label{sec:simulation}
 
+\input{fig-simulation-wan}
+\input{fig-simulation-wan-4Mpbs}
 The purpose of doing simulation is to have a better understanding how edge computing can
 affect current mobile-cloud computing infrastructure. To put it in another way,
 we ask {\em "How much better is it to offload to an edge device rather than to the cloud?"}
@@ -20,9 +22,6 @@ that WAN bandwidth has little or zero effect on T1 architecture, simply because 
 With limited WAN bandwidth, both T3 and T2 has worse responsiveness. Thus it is important to maintain sufficient
 bandwidth between edge devices and cloud.
 
-\input{fig-simulation-wan}
-\input{fig-simulation-wan-4Mpbs}
-
 \subsection{Limitation of Simulation}
 Although EdgeCloudSim is able to provide average service time under different network settings and mobility settings,
 the intrinsic model of using CloudSim prevents us from controlling applications in case of failures. The application
@@ -30,3 +29,4 @@ in EdgeCloudSim is described as a XML file, which lists resource (e.g., CPU, mem
 Users as us are not able to develop real applications on top of EdgeCloudSim. However, in order to achieve resilient
 edge computing, we have to run mobile applications in real edge computing systems, which integrate various
 fault-tolerant policies and mechanisms to provide high availability and reliability.
+

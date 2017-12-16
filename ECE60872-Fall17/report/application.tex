@@ -1,5 +1,5 @@
 \section{Resilient Edge Computing}
-\label{sec:application}
+\label{sec:resilient-egde}
 
 This section presents our solutions to achieve resilient edge computing.
 Due to the limitation of simulation, we believe only real implementation can
@@ -7,6 +7,7 @@ fully explore the potential benefits and challenges of edge computing.
 As we've discussed in section~\ref{sec:computing-models}, we only target Type 3 computing model.
 
 \subsection{Load Balancing}
+\label{sec:load-balancing}
 Balancing workload, or efficient job scheduling among multiple edge devices is key for edge computing
 to achieve high performance while providing high availability and reliability.
 Places with high attractiveness (e.g., cafeteria) will have hundreds of mobile devices,
@@ -56,6 +57,7 @@ edge device should immediately announce this information to all other edge devic
 in its region. To provide high availability and reliability, system software running on edge devices
 will also integrate all standard fault-tolerant mechanisms from distributed system years practice\cite{cavage-queue13,google-acm16}.
 
+\hfill\break
 \noindent \textbf{Application on Mobile Device.}
 Once failure is detected by software timeout, applications on mobile
 devices should immediately re-initialize the offloading process. It should send the request
@@ -65,6 +67,7 @@ running time prediction: a small estimated timeout may lead to false positives, 
 guess may affect user experience.
 
 \subsection{Mechanism for Failure Handling}
+\label{sec:mechanism-fault}
 Above we've discussed the general policies to achieve resilient edge computing, we will discuss
 the general implementation for such policies in this section. Note that we only discuss the
 implementation issues introduced by adding edge computing into current architecture:
@@ -74,24 +77,22 @@ presented in this section only address the policies we've discussed in section~\
 
 \hfill\break
 \noindent \textbf{System Software on Edge Device.}
-a) system software running on multiple edge devices needs to provide a runtime for different services.
+a) System software running on multiple edge devices needs to provide a runtime for different services.
 It can be VM-based~\cite{cloudlets09}, it also can be application-specific. Application-specifc means
 mobile application developers need to provide a runtime in edge servers. The application-specific runtime is
 running on all edge devices, and all the runtime combined together provide the necessary functionalities
-for resilient edge computing. VM-based solution provides a consistent view and ease mobile application programmer's burden,
+for resilient edge computing. VM-based solution provides a consistent view and eases mobile application programmer's burden,
 but it limits the scope of application-awared scheduling. Instead, application-specifc runtime has the freedom
 to choose the best management solution it see fit.
-b) system software on edge devices need to advertise themselves, and also provide a general set of APIs (e.g., RESTful APIs).
+b) System software on edge devices need to advertise themselves and provide a general set of APIs (e.g., RESTful APIs).
 To use edge servers, mobile applications first need to discover available edge devices nearby. After that, mobile applications
 will be able to deploy and communicate with the services running on edge devices.
 
+\hfill\break
 \noindent \textbf{Application on Mobile Device.}
 Mobile applications first need to find if there are any edge devices nearby. If found, they will try to communicate with
 their own services running on edge devices. Assume the service is not deployed in the first run, mobile applications should
 be able to use the general APIs exported by system software on edge device, to deploy the services on edge devices.
 Once deployed, mobile application will offload its computation to edge devices. Mobile applications need to maintain a
 set of software timers to monitor all outgoing jobs. Once a timer fired, mobile applications should immediately follow the
-policies described in section~\ref{sec:policy-fault}. All the implementation is OS-specific, but the general rules apply.
-
-To illustrate this, we implemented an image-processing application, its edge-device runtime and cloud service.
-We will discuss its implementation and evaluation in section~\ref{sec:evaluation}.
+policies described in section~\ref{sec:policy-fault}. Implementation is OS-specific, but the rules apply.
