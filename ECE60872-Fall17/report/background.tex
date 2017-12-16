@@ -12,6 +12,9 @@ leverage cloud computing to overcome the resource limits of mobile devices. Howe
 long WAN delays in the critical path of user interaction can hurt the application
 performance and responsiveness~\cite{cloudlets09}.
 
+\input{fig-computing-models}
+\input{fig-edgecloudsim}
+
 Edge computing is a new computing paradigm which moves the computation closer to the mobile devices.
 The reousrce in the proximity used in edge computing can be a network resource or a computational resource
 in between mobile devices and the cloud. Satyanarayanan et al.~\cite{cloudlets09} introduced the concept
@@ -23,9 +26,6 @@ An edge computing infrastructure can be composed of many edge servers and manage
 The management system needs to decide where to offload a task, and how to ensure reliability and availability
 in case of failures. Recent work \cite{hu-apsys16,COMET} show that application partition schema, and network latency
 both have significant impacts on edge computing performance.
-
-\input{fig-computing-models}
-\input{fig-edgecloudsim}
 
 \subsection{Computing Models}
 \label{sec:computing-models}
@@ -77,4 +77,4 @@ Figure~\ref{fig-edgecloudsim} shows its layered architecture.
 EdgeCloudSim provides three different architectures: single-tier, two-tier and two-tier with load-balancing.
 They map to type 1, type 2 and type 3 as illustrated in Figure~\ref{fig-computing-models} respectively.
 EdgeCloudSim is also able to limit network bandwidth, simulate mobility of mobile devices.
-Detailed evaluation under different settings is presented in section 3.
+We present detailed evaluation using EdgeCloudSim with different computing models in section~\ref{sec:simulation}.
