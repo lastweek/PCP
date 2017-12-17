@@ -4,7 +4,7 @@
 #endif
 
 #proc areadef
-   rectangle: 1 1 10 9
+   rectangle: 1 1 10 7
    xrange: 1 5
    yrange: 0 2.5
 
@@ -25,7 +25,7 @@
 
 #proc getdata
 file: ../Data/data_app.tab
-fieldnames: loc T1 T2 T3 T4
+fieldnames: loc T1 T2 T3 T4 T2-F1 T3-F1 T3-F2
 
 #proc lineplot
     xfield: loc
@@ -48,7 +48,6 @@ fieldnames: loc T1 T2 T3 T4
     pointsymbol: shape=diamond color=blue radius=0.1 style=filled
     legendlabel: T3
     legendsampletype: line+symbol
-
 #proc lineplot
     xfield: loc
     yfield: T4
@@ -57,13 +56,48 @@ fieldnames: loc T1 T2 T3 T4
     legendlabel: T4
     legendsampletype: line+symbol
 
+#proc lineplot
+    xfield: loc
+    yfield: T2-F1
+    linedetails: color=blue width=3 style=0 dashscale=7
+    pointsymbol: shape=diamond color=blue radius=0.1 style=filled
+    legendlabel: T2-F1
+    legendsampletype: line+symbol
+#proc lineplot
+    xfield: loc
+    yfield: T3-F1
+    linedetails: color=blue width=3 style=0 dashscale=7
+    pointsymbol: shape=diamond color=blue radius=0.1 style=filled
+    legendlabel: T3-F1
+    legendsampletype: line+symbol
+#proc lineplot
+    xfield: loc
+    yfield: T3-F2
+    linedetails: color=blue width=3 style=0 dashscale=7
+    pointsymbol: shape=diamond color=blue radius=0.1 style=filled
+    legendlabel: T3-F2
+    legendsampletype: line+symbol
+ 
 #proc legend
-  format: down
-  textdetails: size=20
-  location: min+2.0 min+8
+  format: across
+  textdetails: size=16
+  location: min+2.0 min+6
   seglen: 1.0
+  separation: 0.8
   noclear: yes
   specifyorder: T1
   		T2
 		T3
 		T4
+
+#proc legend
+  format: across
+  textdetails: size=16
+  location: min+2.0 min+5
+  seglen: 1.0
+  separation: 0.4
+  noclear: yes
+  specifyorder:
+		T2-F1
+		T3-F1
+		T3-F2
