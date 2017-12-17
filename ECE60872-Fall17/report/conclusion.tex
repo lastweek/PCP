@@ -2,11 +2,17 @@
 \label{sec:conclusion}
 
 In this work, we investigated edge computing under various settings
-with both simulation and in-house application. Edge computing offers
-the best performance with type 3 computing model. We investigated the
-possibility of implementing application-specific edge device runtime,
-and evaluate with different computing models.
+with both simulation and in-house implemented application.
+Edge computing offers the best performance with type 3 computing model,
+where cloud and multiple edge devices are deployed.
+We also propose the idea of resilient edge computing, which provides high
+availability and reliability guarantees in addition to the better performance
+compared with traditional two-tier architecture. We propose a simple but
+effective load-balancing algorithm among edge devices.
+To demonstrate the idea of resilient edge computing, we further build an application-specific
+edge device runtime, and its corresponding mobile application. Our evaluation of this system
+also comfirms our finding in simulation.
 
-Edge computing is an emerging area. Its decentralized approach resembles
-the rise of personal computing in 1980s. There are still lots of possibilities
-in this area, and we hope to have more exciting findings in the future.
+We still have some unsolved engineering work in our implemented system. Our testbed
+setup also poses several limitations in our evaluation. We have identified them in
+section~\ref{sec:result-analysis}, we leave these for future work.

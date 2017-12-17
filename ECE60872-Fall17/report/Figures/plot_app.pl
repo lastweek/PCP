@@ -9,7 +9,7 @@
    yrange: 0 2.5
 
 #proc xaxis
-   label: Number of Images
+   label: Number of Images Uploaded
    labeldistance: 1.0
    selflocatingstubs: text
       1        100
@@ -19,7 +19,7 @@
       5        500
      
 #proc yaxis
-   label: Response Time (sec)
+   label: Avg. Response Time (sec)
    labeldistance: 1.0
    stubs: inc 0.5
 

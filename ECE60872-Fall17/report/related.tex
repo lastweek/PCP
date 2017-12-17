@@ -1,20 +1,23 @@
 \section{Related Work}
 \label{sec:related}
 
-There have been a host of edge computing literatures~\cite{edge-computing,edgecloudsim,cloudlets09,Cloudlets12,hu-apsys16,ChaufournierSLN17}
-in the past few years.
-Also industry investment in edge computing have grown dramatically recently.
+Edge computing is an emerging area. Its decentralized approach resembles
+the rise of personal computing in 1980s.
+There have been a host of literatures~\cite{edge-computing,edgecloudsim,cloudlets09,Cloudlets12,hu-apsys16,ChaufournierSLN17}
+on edge computing in the past few years.
+Moreover, industry investments in edge computing have grown dramatically recently.
 The Open Edge Computing\cite{url:openedgecomputing} initiative was launched in 2015,
-and the Open Fog Consortium~\cite{url:openfog} was created in 2015.
+and the Open Fog Consortium~\cite{url:openfog} was created in 2015. Both of them have major IT vendors involved.
 
-Hu et al.~\cite{hu-apsys16} explored the impact of partition schemas, offloading sites on edge computing performance.
-They found that the choice of offloading sites is important for both prepartitioned applications and
-for dynamic offloading frameworks such as COMET~\cite{COMET}.
-
+Different from application-specific edge device runtime,
 Satyanarayanan et al.~\cite{cloudlets09} proposed the concept of VM-based cloudlets. A cloudlet is a trusted,
 resource-rich computer that's well-connected to the Internet and available for use by nearby mobile devices.
 Cloudlet resembles the idea of "Data center in a box", but in close proximity to mobile devices.
 However, VM live migration in edge clouds poses a number of challenges. Migrating VMs between geographically
-separate locations over slow wide-area network results in large migration times and high unavailbility of
-the application. Chaufournier et al.~\cite{ChaufournierSLN17} proposed to use MPTCP to speed up VM migration, which can reduce
+separate locations over slow wide-area network results in large migration times and high unavailbility of the application.
+
+To solve this challenge, Chaufournier et al.~\cite{ChaufournierSLN17} proposed to use MPTCP to speed up VM migration, which can reduce
 migratiuon time by up to 50\%.
+Hu et al.~\cite{hu-apsys16} explored the impact of partition schemas, offloading sites on edge computing performance.
+They found that the choice of offloading sites is important for both prepartitioned applications and
+for dynamic offloading frameworks such as COMET~\cite{COMET}.

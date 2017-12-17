@@ -48,6 +48,7 @@ In our experiments, Macbook and smartphone are located at home in the same room.
 the Dell server which located on Purdue campus via Xfinity network. 
 
 \subsection{Result Analysis}
+\label{sec:result-analysis}
 We experiment our system with all four computing models, as described in Figure~\ref{fig-computing-models}.
 For type 1 and type 2, there is only one running edge device in the system. For type 3, we deploy two
 edge devices. They are running in the same Macbook, but with different ports. In type 4, mobile device
@@ -104,10 +105,18 @@ We leave this for future work.
 
 \hfill\break
 \noindent \textbf{Failure Models.}
-Figure~\ref{fig-app} also shows the performance comparison of T2 and T3 with failures manually (i.e., kill edge process) introduced
-in the middle. The failure models follows the category of section~\ref{sec:failure-models}. We don't consider cloud failure here
-because we envision cloud has robust failure-masking techniques. Since we upload images in batch, the failures
-are injected only after images have been uploaded, while computation or migration is in progress. As we described above, return messages
-are sent back in a per-image basis, mobile application can detect remote failures by monitoring the finished jobs.
+Figure~\ref{fig-app} also shows the performance comparison of T2 and T3 with failures manually injected in the middle.
+The failure models follow the category of section~\ref{sec:failure-models}. T2-F1 is the case where egde device failed
+during computation. T3-F1 is the case where the edge device received the uploaded images failed. T3-F2 is the case where
+peer edge device failed. We emulate the edge device failure by manually killing the edge process.
+Since we upload images in batch, the failures are injected only after images have been uploaded, while computation or migration is in progress.
+Failure is injected 30 seconds after images are uploaded.
+However, we don't consider cloud failure here because we envision cloud has robust failure-masking techniques.
+As we described above, return messages are sent back in a per-image basis, mobile application can detect remote failures by monitoring the finished jobs.
 When job failure is detected by software timeout, mobile application will resend the image again to cloud server (under T2 and T3 computing model),
 or to other edges (under T3 computing model).
+Figure~\ref{fig-app} suggests that edge device crash will affect overall performance. In all T2-F1, T3-F1 and T3-F2 cases, as the number of images uploaded increases,
+the effect of failure increases too. This is because migration happens at beginning, the time of migrating images to cloud or edge increases while number of images increases.
+Thus with a fixed failure time, the number of finished jobs by the failing time descreases, which implies mobile application needs to resend more images again.
+
+
