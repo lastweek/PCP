@@ -30,51 +30,51 @@ fieldnames: loc T1 T2 T3 T4 T2-F1 T3-F1 T3-F2
 #proc lineplot
     xfield: loc
     yfield: T1
-    linedetails: color=red width=3 style=0 dashscale=7
-    pointsymbol: shape=square color=red radius=0.1 style=filled
+    linedetails: width=3 style=0 dashscale=7
+    pointsymbol: shape=square radius=0.1 style=filled
     legendlabel: T1
     legendsampletype: line+symbol
 #proc lineplot
     xfield: loc
     yfield: T2
-    linedetails: color=green width=3 style=0 dashscale=7
-    pointsymbol: shape=circle color=green radius=0.1 style=filled
+    linedetails: width=3 style=0 dashscale=7
+    pointsymbol: shape=circle radius=0.1 style=filled
     legendlabel: T2
     legendsampletype: line+symbol
 #proc lineplot
     xfield: loc
     yfield: T3
-    linedetails: color=blue width=3 style=0 dashscale=7
-    pointsymbol: shape=diamond color=blue radius=0.1 style=filled
+    linedetails: width=3 style=0 dashscale=7
+    pointsymbol: shape=diamond radius=0.1 style=filled
     legendlabel: T3
     legendsampletype: line+symbol
 #proc lineplot
     xfield: loc
     yfield: T4
-    linedetails: color=black width=3 style=0 dashscale=7
-    pointsymbol: shape=diamond color=black radius=0.1 style=filled
+    linedetails: width=3 style=0 dashscale=7
+    pointsymbol: shape=triangle radius=0.1 style=filled
     legendlabel: T4
     legendsampletype: line+symbol
 
 #proc lineplot
     xfield: loc
     yfield: T2-F1
-    linedetails: color=blue width=3 style=0 dashscale=7
-    pointsymbol: shape=diamond color=blue radius=0.1 style=filled
+    linedetails: color=gray(0.3) width=3 style=1 dashscale=7
+    pointsymbol: shape=downtriangle color=gray(0.3) radius=0.1 style=filled
     legendlabel: T2-F1
     legendsampletype: line+symbol
 #proc lineplot
     xfield: loc
     yfield: T3-F1
-    linedetails: color=blue width=3 style=0 dashscale=7
-    pointsymbol: shape=diamond color=blue radius=0.1 style=filled
+    linedetails: color=gray(0.3) width=3 style=3 dashscale=7
+    pointsymbol: shape=triangle color=gray(0.3) radius=0.1 style=filled
     legendlabel: T3-F1
     legendsampletype: line+symbol
 #proc lineplot
     xfield: loc
     yfield: T3-F2
-    linedetails: color=blue width=3 style=0 dashscale=7
-    pointsymbol: shape=diamond color=blue radius=0.1 style=filled
+    linedetails: color=gray(0.3) width=3 style=9 dashscale=7
+    pointsymbol: shape=circle color=gray(0.3) radius=0.1 style=filled
     legendlabel: T3-F2
     legendsampletype: line+symbol
  

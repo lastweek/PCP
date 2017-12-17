@@ -32,14 +32,10 @@ both have significant impacts on edge computing performance.
 Edge computing offers more possibilities for current mobile-cloud computing architecture.
 Figure~\ref{fig-computing-models} presents four computing models. Type 4 is the original
 two-tier architecture, where mobile devices communicate with cloud only. With the introduction of
-edge devices, it make type 1 to type 3 possible. In type 1, mobile device contact with only one edge device.
-This is benefical for mobile devices with low mobility. Compare with type 1, edge devices in type 2 can
-push computation to cloud, whenever edge devices think offload can improve performance. Type 3 offers
+edge devices, it makes type 1 to type 3 possible. In type 1, mobile device contacts with only one edge device.
+This is benefical for mobile devices with low mobility. Compared with type 1, edge devices in type 2 can
+push computation to cloud, whenever edge devices think offloading can improve performance. Type 3 offers
 more flexibility by load-balancing jobs among multiple edge devices.
-
-We will evaluate type 1 to type 3 use our simulator. However, in this work we will implement our
-application based on type 3 only, because we believe type 3 has better load-balaning opportunities
-than others. Furthermore, type 3 is more realistic to integrate into current two-tier architecture smoothly.
 
 \subsection{Failure Models}
 \label{sec:failure-models}
@@ -61,8 +57,8 @@ edge computing is to provide high availability and reliability guarantees to
 applications running on mobile devices.
 
 \subsection{EdgeCloudSim}
-Developing a set of systems softwares for edge computing is not an easy process due
-to the complexity of various application requirment and different mobile devices.
+Developing a set of system software for edge computing is not an easy process due
+to the complexity of various application requirments and different mobile devices.
 Therefore it is better to have a basic understanding of what edge computing can provide
 before doing real system implementation.
 

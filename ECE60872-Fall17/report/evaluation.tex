@@ -109,14 +109,23 @@ Figure~\ref{fig-app} also shows the performance comparison of T2 and T3 with fai
 The failure models follow the category of section~\ref{sec:failure-models}. T2-F1 is the case where egde device failed
 during computation. T3-F1 is the case where the edge device received the uploaded images failed. T3-F2 is the case where
 peer edge device failed. We emulate the edge device failure by manually killing the edge process.
-Since we upload images in batch, the failures are injected only after images have been uploaded, while computation or migration is in progress.
-Failure is injected 30 seconds after images are uploaded.
+Since we upload images in batch, failures must be injected after images have been uploaded while computation or migration is in progress.
+Otherwise the failure of edge device will not have any effect.
+Therefore, we choose to inject failure 30 seconds after images have been uploaded.
 However, we don't consider cloud failure here because we envision cloud has robust failure-masking techniques.
 As we described above, return messages are sent back in a per-image basis, mobile application can detect remote failures by monitoring the finished jobs.
-When job failure is detected by software timeout, mobile application will resend the image again to cloud server (under T2 and T3 computing model),
-or to other edges (under T3 computing model).
-Figure~\ref{fig-app} suggests that edge device crash will affect overall performance. In all T2-F1, T3-F1 and T3-F2 cases, as the number of images uploaded increases,
-the effect of failure increases too. This is because migration happens at beginning, the time of migrating images to cloud or edge increases while number of images increases.
-Thus with a fixed failure time, the number of finished jobs by the failing time descreases, which implies mobile application needs to resend more images again.
+When job failure is detected by software timeout, mobile application will resend the images again to cloud server. We choose to always resend images
+back to cloud even in T3 since we did not have the mechanism to tell which edge failed.
+The results in Figure~\ref{fig-app} show that even in the face of failures, T2 and T3 still have better performance than T1.
+In all T2-F1, T3-F1 and T3-F2 cases, as the number of images uploaded increases,
+the effect of failure increases too. This is because migration happens at the very beginning. Moreover, the time of migrating increases while number of images increases.
+Thus, with a fixed failure time (i.e. 30 seconds in our testing), the number of finished jobs by the failure time descreases, which implies mobile application needs to resend more images again. This explains why the average response time increases while number of images becomes larger.
 
-
+\hfill\break
+\noindent \textbf{Future Work.}
+Application-specifc edge device runtime requires the application developer to manage all runtime details.
+Even though we have implemented the basic functionalities to achieve resilient edge computing, we still
+lack several components in our system. For example, the first-run-deploy subsystem, which will help
+to deploy the runtime on edge device. Also some advertising techniques for mobile devices to discover
+online edge devices nearby. We are aware of the limitations in current implementation, we hope we could have
+more time to extend this work.
