@@ -37,7 +37,9 @@ System software will update and exchange \(EW\) periodically.
 The cost to migrate a job between edge devices is \(C\). Suppose at time \(t\), edge device \(E_i\) is
 checking if job \(J\) should be migrated, it will find the \(min(EW_k + C)\).
 If \(min(EW_k + C)\) is smaller than its own \(EW_i\), then edge device \(E_i\) will initiate the migration
-to edge device \(E_k\).
+to edge device \(E_k\). A simple but effective optimization is: if both peer edge device and cloud are
+candidates for migration, the algorithm can favor edge device over cloud. Because normally edge device
+has lower network latency for response.
 
 \subsection{Policy for Failure Handling}
 \label{sec:policy-fault}
