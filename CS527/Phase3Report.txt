@@ -1,0 +1,29 @@
+Reported bugs:
+1. Format string (client.c: 411):
+	- printf(server_ip);
+	+ printf("%s", server_ip);
+
+2. Command injection (allow any command lines in Linux):
+	Check if the command is valid in find_command. If not, do not execute it in run_command.
+
+3. Buffer overflow
+	- strncpy(server_ip, argv[1], MAX(strlen(argv[1]) + 1, IP_LEN_MAX));
+	+ strncpy(server_ip, argv[1], MIN(strlen(argv[1]) + 1, IP_LEN_MAX));
+
+	- strncpy(server_port_buff, argv[2], MAX(strlen(argv[2]) + 1, PORT_LEN_MAX));
+	+ strncpy(server_port_buff, argv[2], MIN(strlen(argv[2]) + 1, PORT_LEN_MAX));
+
+	- strncpy(infile_name, argv[3], MAX(strlen(argv[3]) + 1, FILE_NAME_MAX)); 
+	+ strncpy(infile_name, argv[3], MIN(strlen(argv[3]) + 1, FILE_NAME_MAX));
+
+	- strncpy(outfile_name, argv[4], MAX(strlen(argv[4]) + 1,  FILE_NAME_MAX));
+	+ strncpy(outfile_name, argv[4], MIN(strlen(argv[4]) + 1,  FILE_NAME_MAX));
+
+Un-reported bugs:
+1. Stack overflow (client.c: 458)
+	- fgets(cmdBuffer, sizeof(cmdBuffer) + 100, stdin);
+	+ fgets(cmdBuffer, sizeof(cmdBuffer), stdin);
+
+2. Stack overflow (server_conf.c: 219)
+	- fgets(line, sizeof(line), fp);
+	+ ...
